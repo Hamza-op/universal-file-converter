@@ -1,0 +1,31 @@
+# Build artifacts
+/target/
+/.target/
+
+# Cargo lock is committed for binary crates (keep it)
+# Cargo.lock
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Embedded FFmpeg source archive (not needed in repo — binaries are in bin/)
+ffmpeg-*.zip
+
+# Runtime temp files
+*.log
+*.tmp
+
+# Internal dev notes (keep project.md out of releases)
+project.md
+
+# Gemini agent artifacts
+.gemini/
