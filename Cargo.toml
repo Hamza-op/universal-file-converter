@@ -8,7 +8,7 @@ build = "build.rs"
 
 [dependencies]
 # GUI
-eframe = { version = "0.31", features = ["persistence"] }
+eframe = { version = "0.31", default-features = false, features = ["persistence", "default_fonts", "accesskit", "wgpu", "wayland", "x11"] }
 egui = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
 

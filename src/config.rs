@@ -104,34 +104,41 @@ impl MediaForgeConfig {
     }
 
     pub fn ffmpeg_path(&self) -> String {
-        self.resolve_tool_path("ffmpeg.exe", true)
+        self.resolve_tool_path("ffmpeg", true)
     }
 
     pub fn ffprobe_path(&self) -> String {
-        self.resolve_tool_path("ffprobe.exe", true)
+        self.resolve_tool_path("ffprobe", true)
     }
 
     fn resolve_tool_path(&self, tool: &str, allow_embedded: bool) -> String {
+        let exe_name = if cfg!(target_os = "windows") {
+            format!("{tool}.exe")
+        } else {
+            tool.to_string()
+        };
+
         if let Ok(exe) = std::env::current_exe() {
-            let next_to_exe = exe.with_file_name(tool);
+            let next_to_exe = exe.with_file_name(&exe_name);
             if next_to_exe.exists() {
                 return next_to_exe.to_string_lossy().to_string();
             }
         }
 
         if allow_embedded {
-            let (ffmpeg, ffprobe) = crate::converter::embed::get_ffmpeg_paths();
-            let embedded = if tool.eq_ignore_ascii_case("ffmpeg.exe") {
-                ffmpeg
-            } else {
-                ffprobe
-            };
-            if Path::new(&embedded).exists() {
-                return embedded;
+            if let Some((ffmpeg, ffprobe)) = crate::converter::embed::get_ffmpeg_paths() {
+                let embedded = if tool.eq_ignore_ascii_case("ffmpeg") {
+                    ffmpeg
+                } else {
+                    ffprobe
+                };
+                if Path::new(&embedded).exists() {
+                    return embedded;
+                }
             }
         }
 
-        tool.trim_end_matches(".exe").to_string()
+        tool.to_string()
     }
 }
 

@@ -1,16 +1,18 @@
 # MediaForge
 
-**All-in-One Portable Media Converter** — A single-exe media converter for Windows that handles video, audio, and image conversions. No installation required. No external dependencies.
+**All-in-One Portable Media Converter** — A standalone media converter for Windows, macOS, and Linux that handles video, audio, and image conversions.
 
 ![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)
-![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue?logo=windows)
+![Platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-blue?logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
 ## Features
 
-- **Single portable `.exe`** — copy anywhere and run, zero installation
+- **Cross-platform** — works on Windows, macOS, and Linux
+- **Single portable `.exe` (Windows)** — copy anywhere and run, zero installation
+- **Bundled FFmpeg (Windows)** — no external downloads needed on Windows
 - **Video conversion** — MP4, MKV, AVI, MOV, WebM, WMV, FLV, MPEG, 3GP, TS, GIF, OGV
 - **Audio conversion** — MP3, WAV, FLAC, AAC, OGG, OPUS, WMA, AIFF, AC3, M4A
 - **Image conversion** — PNG, JPG, WebP, BMP, TIFF, GIF, ICO, AVIF
@@ -22,7 +24,6 @@
 - **Single instance** — launching from context menu sends files to the running window
 - **Desktop notifications** — get notified when batch conversions complete
 - **Dark & Light themes** — toggle in settings
-- **Bundled FFmpeg** — no external downloads needed
 
 ## Screenshot
 
@@ -30,15 +31,22 @@
 
 ## Getting Started
 
-### Download
+### Windows Portable
 
-Grab the latest `mediaforge.exe` from the **Releases** page and run it. That's it.
+Grab the latest `mediaforge.exe` from the **Releases** page and run it. That's it. FFmpeg is embedded inside the executable.
+
+### macOS & Linux Requirements
+
+On macOS and Linux, MediaForge requires `ffmpeg` and `ffprobe` to be installed on your system and available in your `PATH`.
+- **macOS:** `brew install ffmpeg`
+- **Ubuntu/Debian:** `sudo apt install ffmpeg`
+- **Arch:** `sudo pacman -S ffmpeg`
 
 ### Build from Source
 
 **Prerequisites:**
-- [Rust toolchain](https://rustup.rs/) (stable, MSVC target)
-- FFmpeg binaries placed in `bin/` (ffmpeg.exe, ffprobe.exe)
+- [Rust toolchain](https://rustup.rs/) (stable)
+- **Windows only:** FFmpeg binaries placed in `bin/` (`ffmpeg.exe`, `ffprobe.exe`) prior to building.
 
 ```bash
 # Clone the repo
@@ -47,8 +55,6 @@ cd MediaForge
 
 # Build release (optimized, stripped)
 cargo build --release
-
-# Output: target/release/mediaforge.exe
 ```
 
 The release profile is configured for maximum optimization:
