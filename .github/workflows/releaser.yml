@@ -1,0 +1,42 @@
+name: Release Executable
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Windows EXE
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Release
+        run: cargo build --release
+
+      - name: Prepare Release Assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item -Path "target\release\mediaforge.exe" -Destination "dist\MediaForge.exe"
+          Copy-Item -Path "target\release\mediaforge.exe" -Destination "dist\HTML-to-Office-Converter.exe" -ErrorAction SilentlyContinue
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/MediaForge.exe
+            dist/HTML-to-Office-Converter.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
