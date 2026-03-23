@@ -9,7 +9,7 @@ use crate::media::detect::MediaType;
 use crate::ui::{theme, widgets};
 
 const INPUT_RATIO: f32 = 0.55;
-const CARD_MARGIN: i8 = 10;
+const CARD_MARGIN: i8 = 12;
 
 pub fn show(app: &mut MediaForgeApp, ui: &mut Ui) {
     // Only recompute formats when the file list or selections changed
@@ -26,10 +26,9 @@ pub fn show(app: &mut MediaForgeApp, ui: &mut Ui) {
         }
     }
 
-    ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+    ui.spacing_mut().item_spacing = egui::vec2(6.0, 5.0);
 
     let content_width = ui.available_width();
-    // Clone cached formats to avoid borrow issues
     let formats = app.cached_formats.clone();
     show_content(app, ui, &formats, content_width);
 }
@@ -41,15 +40,13 @@ fn show_content(
     content_width: f32,
 ) {
     show_header(app, ui);
-    ui.add_space(2.0);
+    ui.add_space(3.0);
 
     if content_width < 780.0 {
-        // Narrow: stack vertically
         show_input_panel(app, ui);
-        ui.add_space(2.0);
+        ui.add_space(3.0);
         show_output_panel(app, ui, formats);
     } else {
-        // Wide: weighted two-column
         ui.horizontal_top(|ui| {
             let space = ui.available_width();
             let spacing = ui.spacing().item_spacing.x;
@@ -80,12 +77,19 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
     card_frame(theme::surface_secondary(dark_mode), CARD_MARGIN).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.label(
-                    RichText::new("MediaForge")
-                        .size(20.0)
-                        .strong()
-                        .color(theme::text_primary(dark_mode)),
-                );
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("◆")
+                            .size(22.0)
+                            .color(theme::ACCENT),
+                    );
+                    ui.label(
+                        RichText::new("MediaForge")
+                            .size(21.0)
+                            .strong()
+                            .color(theme::text_primary(dark_mode)),
+                    );
+                });
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
                         RichText::new("Portable media converter")
@@ -93,21 +97,21 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
                             .color(theme::text_secondary(dark_mode)),
                     );
                     ui.label(
-                        RichText::new("(Made with Rust:")
-                            .size(10.0)
-                            .color(theme::ACCENT_LIGHT),
+                        RichText::new("·")
+                            .size(11.0)
+                            .color(theme::TEXT_DIM),
                     );
                     ui.hyperlink_to(
-                        RichText::new("github.com/Hamza-op)")
+                        RichText::new("github.com/Hamza-op")
                             .size(10.0)
-                            .color(theme::text_secondary(dark_mode)),
+                            .color(theme::ACCENT_LIGHT),
                         "https://github.com/Hamza-op",
                     );
                 });
             });
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if widgets::outline_button(ui, "\u{2699} Settings").clicked() {
+                if widgets::outline_button(ui, "⚙ Settings").clicked() {
                     app.show_settings = !app.show_settings;
                 }
 
@@ -119,11 +123,11 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
                     ("Ready", theme::ACCENT_LIGHT)
                 };
 
-                pill(ui, status_text, status_color, color_with_alpha(status_color, 24));
+                pill(ui, status_text, status_color, color_with_alpha(status_color, 28));
             });
         });
 
-        ui.add_space(4.0);
+        ui.add_space(5.0);
         ui.horizontal_wrapped(|ui| {
             compact_stat(ui, "Files", &app.files.len().to_string());
             compact_stat(
@@ -144,7 +148,7 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
         });
 
         if app.progress.is_running || app.progress.is_complete {
-            ui.add_space(4.0);
+            ui.add_space(5.0);
             let label = if app.progress.is_running {
                 if let Some(eta) = app.progress.eta_secs {
                     format!(
@@ -190,6 +194,8 @@ fn show_input_panel(app: &mut MediaForgeApp, ui: &mut Ui) {
         if drop.clicked() {
             open_file_dialog(app);
         }
+
+        ui.add_space(2.0);
 
         ui.horizontal(|ui| {
             if widgets::accent_button(ui, "+ Files").clicked() {
@@ -246,7 +252,7 @@ fn show_input_panel(app: &mut MediaForgeApp, ui: &mut Ui) {
                 ui,
                 &format!("Importing {} discovered", app.files.len()),
                 theme::ACCENT_LIGHT,
-                color_with_alpha(theme::ACCENT_LIGHT, 24),
+                color_with_alpha(theme::ACCENT_LIGHT, 28),
             );
         }
 
@@ -267,7 +273,7 @@ fn show_output_panel(app: &mut MediaForgeApp, ui: &mut Ui, formats: &[OutputForm
                 show_format_picker(ui, app, formats);
                 output_settings(app, ui);
                 show_convert_button(app, ui);
-                ui.add_space(2.0);
+                ui.add_space(3.0);
 
                 if let Some(format) = &app.selected_format {
                     show_quality_settings(ui, &format.category, &mut app.config);
@@ -290,14 +296,19 @@ fn show_file_list(app: &mut MediaForgeApp, ui: &mut Ui) {
     Frame::default()
         .fill(theme::surface_secondary(dark_mode))
         .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-        .corner_radius(CornerRadius::same(14))
+        .corner_radius(CornerRadius::same(12))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             ui.set_min_height(desired_height);
             if app.files.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(46.0);
-                    ui.label(RichText::new("Nothing queued").size(18.0).strong());
+                    ui.label(
+                        RichText::new("Nothing queued")
+                            .size(18.0)
+                            .strong()
+                            .color(theme::text_primary(dark_mode)),
+                    );
                     ui.label(
                         RichText::new(
                             "Add files or a folder and everything stays on this screen.",
@@ -331,23 +342,23 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
     let row_fill = match &file.status {
         FileStatus::Converting => {
             if dark_mode {
-                Color32::from_rgb(24, 48, 78)
+                Color32::from_rgb(42, 26, 48)
             } else {
-                Color32::from_rgb(217, 235, 252)
+                Color32::from_rgb(248, 232, 238)
             }
         }
         FileStatus::Done => {
             if dark_mode {
-                Color32::from_rgb(20, 45, 37)
+                Color32::from_rgb(22, 44, 38)
             } else {
-                Color32::from_rgb(221, 244, 232)
+                Color32::from_rgb(224, 248, 236)
             }
         }
         FileStatus::Failed(_) => {
             if dark_mode {
-                Color32::from_rgb(56, 28, 34)
+                Color32::from_rgb(52, 24, 28)
             } else {
-                Color32::from_rgb(251, 225, 229)
+                Color32::from_rgb(252, 226, 228)
             }
         }
         FileStatus::Pending => theme::soft_fill(dark_mode),
@@ -356,7 +367,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
     Frame::default()
         .fill(row_fill)
         .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-        .corner_radius(CornerRadius::same(12))
+        .corner_radius(CornerRadius::same(10))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -371,12 +382,12 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                     let name_color = match &file.status {
                         FileStatus::Done => theme::SUCCESS,
                         FileStatus::Failed(_) => theme::ERROR,
-                        FileStatus::Converting => theme::ACCENT_LIGHT,
+                        FileStatus::Converting => theme::ACCENT_HI,
                         FileStatus::Pending => theme::text_primary(dark_mode),
                     };
                     ui.label(
                         RichText::new(file.filename())
-                            .size(12.0)
+                            .size(12.5)
                             .strong()
                             .color(name_color),
                     );
@@ -399,7 +410,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                             egui::Button::new(RichText::new("\u{2715}").size(10.0))
                                 .fill(theme::inactive_chip(dark_mode))
                                 .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-                                .corner_radius(CornerRadius::same(10))
+                                .corner_radius(CornerRadius::same(8))
                                 .min_size(Vec2::new(28.0, 24.0)),
                         )
                         .clicked()
@@ -408,11 +419,11 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                     }
                     let (label, color) = match &file.status {
                         FileStatus::Pending => ("Queued", theme::TEXT_DIM),
-                        FileStatus::Converting => ("Working", theme::ACCENT_LIGHT),
+                        FileStatus::Converting => ("Working", theme::ACCENT_HI),
                         FileStatus::Done => ("Done", theme::SUCCESS),
                         FileStatus::Failed(_) => ("Failed", theme::ERROR),
                     };
-                    pill(ui, label, color, color_with_alpha(color, 20));
+                    pill(ui, label, color, color_with_alpha(color, 24));
                 });
             });
         });
@@ -525,11 +536,12 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
         .map(|f| f.category)
         .unwrap_or(FormatCategory::Image);
 
+    // Category tabs
     ui.horizontal(|ui| {
         for (label, category) in [
-            ("Video", FormatCategory::Video),
-            ("Audio", FormatCategory::Audio),
-            ("Image", FormatCategory::Image),
+            ("▶ Video", FormatCategory::Video),
+            ("♪ Audio", FormatCategory::Audio),
+            ("◻ Image", FormatCategory::Image),
         ] {
             let has_any = formats.iter().any(|f| f.category == category);
             if !has_any {
@@ -552,15 +564,15 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
                     egui::Button::new(RichText::new(label).size(11.0).color(text_color))
                         .fill(fill)
                         .stroke(Stroke::new(
-                            1.0,
+                            if selected { 1.0 } else { 1.0 },
                             if selected {
                                 theme::ACCENT_HI
                             } else {
                                 theme::PANEL_STROKE
                             },
                         ))
-                        .corner_radius(CornerRadius::same(14))
-                        .min_size(Vec2::new(70.0, 24.0)),
+                        .corner_radius(CornerRadius::same(12))
+                        .min_size(Vec2::new(72.0, 26.0)),
                 )
                 .clicked()
             {
@@ -569,6 +581,7 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
         }
     });
 
+    // Format chips
     ui.horizontal_wrapped(|ui| {
         for format in formats.iter().filter(|f| f.category == active_category) {
             let selected = app
@@ -596,7 +609,7 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
                     egui::Button::new(RichText::new(format.label).size(11.0).color(text_color))
                         .fill(fill)
                         .stroke(Stroke::new(1.0, stroke))
-                        .corner_radius(CornerRadius::same(18))
+                        .corner_radius(CornerRadius::same(16))
                         .min_size(Vec2::new(0.0, 24.0)),
                 )
                 .clicked()
@@ -609,7 +622,12 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
 
 fn show_progress_hint(ui: &mut Ui, app: &mut MediaForgeApp) {
     subtle_panel(ui, |ui| {
-        ui.label(RichText::new("Converting...").size(11.0).strong());
+        ui.label(
+            RichText::new("Converting...")
+                .size(12.0)
+                .strong()
+                .color(theme::ACCENT_HI),
+        );
         if app.progress.current_file_name.is_empty() {
             ui.label(
                 RichText::new("Overall progress is shown in the top header.")
@@ -650,13 +668,13 @@ fn show_complete(ui: &mut Ui, app: &mut MediaForgeApp) {
                 ui,
                 &format!("{} done", app.progress.succeeded),
                 theme::SUCCESS,
-                color_with_alpha(theme::SUCCESS, 20),
+                color_with_alpha(theme::SUCCESS, 24),
             );
             pill(
                 ui,
                 &format!("{} failed", app.progress.failed),
                 theme::ERROR,
-                color_with_alpha(theme::ERROR, 20),
+                color_with_alpha(theme::ERROR, 24),
             );
         });
         if widgets::outline_button(ui, "Open Folder").clicked() {
@@ -673,7 +691,12 @@ fn show_complete(ui: &mut Ui, app: &mut MediaForgeApp) {
 
 fn idle_preview(app: &MediaForgeApp, ui: &mut Ui) {
     subtle_panel(ui, |ui| {
-        ui.label(RichText::new("Ready").size(11.0).strong());
+        ui.label(
+            RichText::new("Ready")
+                .size(12.0)
+                .strong()
+                .color(theme::ACCENT_LIGHT),
+        );
         let selected = app.files.iter().filter(|f| f.selected).count();
         let text = if let Some(format) = &app.selected_format {
             format!("{selected} file(s) will convert to {}", format.label)
@@ -701,15 +724,15 @@ fn show_convert_button(app: &mut MediaForgeApp, ui: &mut Ui) {
         if ui
             .add(
                 egui::Button::new(
-                    RichText::new(format!("\u{25B6}  {label}"))
+                    RichText::new(format!("▶  {label}"))
                         .size(14.0)
                         .strong()
                         .color(Color32::WHITE),
                 )
                 .fill(theme::ACCENT)
                 .stroke(Stroke::new(1.0, theme::ACCENT_HI))
-                .corner_radius(CornerRadius::same(14))
-                .min_size(Vec2::new(btn_width, 34.0)),
+                .corner_radius(CornerRadius::same(12))
+                .min_size(Vec2::new(btn_width, 36.0)),
             )
             .clicked()
         {
@@ -743,8 +766,6 @@ fn open_folder_dialog(app: &mut MediaForgeApp) {
 
 // ── Data helpers ──
 
-/// Compute available formats based on current file selections.
-/// This is only called when formats_dirty is true.
 fn compute_available_formats(app: &MediaForgeApp) -> Vec<OutputFormat> {
     if app.files.is_empty() {
         let mut all = Vec::with_capacity(31);
@@ -797,7 +818,7 @@ fn card_frame(fill: Color32, margin: i8) -> Frame {
     Frame::default()
         .fill(fill)
         .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-        .corner_radius(CornerRadius::same(18))
+        .corner_radius(CornerRadius::same(16))
         .inner_margin(egui::Margin::same(margin))
 }
 
@@ -807,7 +828,7 @@ fn subtle_panel(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     Frame::default()
         .fill(theme::surface_tertiary(dark_mode))
         .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-        .corner_radius(CornerRadius::same(14))
+        .corner_radius(CornerRadius::same(12))
         .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
             ui.set_min_width(w - 26.0);
@@ -819,15 +840,16 @@ fn section_heading(ui: &mut Ui, title: &str, subtitle: &str) {
     let dark_mode = ui.visuals().dark_mode;
     ui.label(
         RichText::new(title)
-            .size(14.0)
+            .size(15.0)
             .strong()
             .color(theme::text_primary(dark_mode)),
     );
     ui.label(
         RichText::new(subtitle)
-            .size(10.0)
+            .size(10.5)
             .color(theme::text_secondary(dark_mode)),
     );
+    ui.add_space(2.0);
 }
 
 fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
@@ -835,7 +857,7 @@ fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
     Frame::default()
         .fill(theme::soft_fill(dark_mode))
         .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
-        .corner_radius(CornerRadius::same(12))
+        .corner_radius(CornerRadius::same(10))
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
             ui.vertical(|ui| {
@@ -846,7 +868,7 @@ fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
                 );
                 ui.label(
                     RichText::new(value)
-                        .size(11.0)
+                        .size(11.5)
                         .strong()
                         .color(theme::text_primary(dark_mode)),
                 );
@@ -857,9 +879,9 @@ fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
 fn pill(ui: &mut Ui, text: &str, text_color: Color32, fill: Color32) {
     Frame::default()
         .fill(fill)
-        .stroke(Stroke::new(1.0, color_with_alpha(text_color, 40)))
+        .stroke(Stroke::new(1.0, color_with_alpha(text_color, 44)))
         .corner_radius(CornerRadius::same(255))
-        .inner_margin(egui::Margin::symmetric(9, 4))
+        .inner_margin(egui::Margin::symmetric(10, 4))
         .show(ui, |ui| {
             ui.label(RichText::new(text).size(9.5).strong().color(text_color));
         });

@@ -9,62 +9,64 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
     egui::Window::new("Settings")
         .open(&mut app.show_settings)
         .resizable(true)
-        .default_width(450.0)
-        .default_height(500.0)
+        .default_width(460.0)
+        .default_height(520.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // General
-                egui::CollapsingHeader::new(RichText::new("\u{2699} General").size(15.0).strong())
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label("Theme:");
-                            if ui
-                                .selectable_label(app.config.theme == Theme::Dark, "Dark")
-                                .clicked()
-                            {
-                                app.config.theme = Theme::Dark;
-                                ctx.set_visuals(theme::dark_theme());
-                            }
-                            if ui
-                                .selectable_label(app.config.theme == Theme::Light, "Light")
-                                .clicked()
-                            {
-                                app.config.theme = Theme::Light;
-                                ctx.set_visuals(theme::light_theme());
-                            }
-                        });
-
-                        ui.add_space(4.0);
-
-                        ui.horizontal(|ui| {
-                            ui.label("Default suffix:");
-                            ui.text_edit_singleline(&mut app.config.default_suffix);
-                        });
-
-                        ui.checkbox(
-                            &mut app.config.show_notification,
-                            "Show system notification on completion",
-                        );
-                        ui.checkbox(
-                            &mut app.config.play_sound_on_complete,
-                            "Play sound on completion",
-                        );
-
-                        ui.horizontal(|ui| {
-                            ui.label("Max folder scan depth:");
-                            ui.add(
-                                egui::DragValue::new(&mut app.config.max_folder_scan_depth)
-                                    .range(1..=50),
-                            );
-                        });
+                egui::CollapsingHeader::new(
+                    RichText::new("⚙ General").size(15.0).strong(),
+                )
+                .default_open(true)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Theme:");
+                        if ui
+                            .selectable_label(app.config.theme == Theme::Dark, "Dark")
+                            .clicked()
+                        {
+                            app.config.theme = Theme::Dark;
+                            ctx.set_visuals(theme::dark_theme());
+                        }
+                        if ui
+                            .selectable_label(app.config.theme == Theme::Light, "Light")
+                            .clicked()
+                        {
+                            app.config.theme = Theme::Light;
+                            ctx.set_visuals(theme::light_theme());
+                        }
                     });
+
+                    ui.add_space(4.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Default suffix:");
+                        ui.text_edit_singleline(&mut app.config.default_suffix);
+                    });
+
+                    ui.checkbox(
+                        &mut app.config.show_notification,
+                        "Show system notification on completion",
+                    );
+                    ui.checkbox(
+                        &mut app.config.play_sound_on_complete,
+                        "Play sound on completion",
+                    );
+
+                    ui.horizontal(|ui| {
+                        ui.label("Max folder scan depth:");
+                        ui.add(
+                            egui::DragValue::new(&mut app.config.max_folder_scan_depth)
+                                .range(1..=50),
+                        );
+                    });
+                });
 
                 ui.add_space(8.0);
 
                 // Performance
                 egui::CollapsingHeader::new(
-                    RichText::new("\u{26A1} Performance").size(15.0).strong(),
+                    RichText::new("⚡ Performance").size(15.0).strong(),
                 )
                 .default_open(false)
                 .show(ui, |ui| {
@@ -136,7 +138,7 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
 
                 // Context Menu
                 egui::CollapsingHeader::new(
-                    RichText::new("\u{1F4C2} Context Menu").size(15.0).strong(),
+                    RichText::new("📂 Context Menu").size(15.0).strong(),
                 )
                 .default_open(false)
                 .show(ui, |ui| {
@@ -144,9 +146,9 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
 
                     ui.label(
                         RichText::new(if is_registered {
-                            "\u{2705} Context menu is registered"
+                            "✅ Context menu is registered"
                         } else {
-                            "\u{274C} Context menu is not registered"
+                            "❌ Context menu is not registered"
                         })
                         .size(13.0),
                     );
@@ -186,16 +188,23 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
 
                 // About
                 egui::CollapsingHeader::new(
-                    RichText::new("\u{2139} About").size(15.0).strong(),
+                    RichText::new("ℹ About").size(15.0).strong(),
                 )
                 .default_open(false)
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new("MediaForge")
-                            .size(18.0)
-                            .strong()
-                            .color(theme::ACCENT),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("◆")
+                                .size(20.0)
+                                .color(theme::ACCENT),
+                        );
+                        ui.label(
+                            RichText::new("MediaForge")
+                                .size(18.0)
+                                .strong()
+                                .color(theme::ACCENT),
+                        );
+                    });
                     ui.label("All-in-One Media Converter");
                     ui.label(format!("Version: {}", env!("CARGO_PKG_VERSION")));
 
@@ -234,7 +243,7 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
                 if app.status_message == "Settings saved" {
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new("Settings saved")
+                        RichText::new("✓ Settings saved")
                             .size(12.0)
                             .color(theme::SUCCESS),
                     );
