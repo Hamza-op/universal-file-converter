@@ -13,8 +13,8 @@ use crate::media::metadata;
 use crate::ui::{main_view, settings, theme};
 
 pub enum ImportMessage {
-    FileDiscovered(InputFile),
-    BatchDone { added: usize },
+    FileDiscovered(Box<InputFile>),
+    BatchDone,
 }
 
 pub struct MediaForgeApp {
@@ -49,6 +49,7 @@ pub struct MediaForgeApp {
     pub fonts_configured: bool,
     pub ffmpeg_check_requested: bool,
     pub is_importing: bool,
+    pub active_import_jobs: usize,
 
     // Cached format list — dirty flag avoids recomputing every frame
     pub cached_formats: Vec<OutputFormat>,
@@ -85,6 +86,7 @@ impl MediaForgeApp {
             fonts_configured: false,
             ffmpeg_check_requested: false,
             is_importing: false,
+            active_import_jobs: 0,
             cached_formats: Vec::new(),
             formats_dirty: true,
         };
@@ -161,15 +163,16 @@ impl MediaForgeApp {
                         file.status = FileStatus::Converting;
                     }
                 }
-                ConversionMessage::FileProgress { index, pct, speed, eta } => {
+                ConversionMessage::FileProgress { pct, speed, eta } => {
                     self.progress.current_file_pct = pct;
                     self.progress.speed_str = speed;
                     self.progress.eta_secs = eta;
 
                     let total = self.progress.total_files as f64;
                     if total > 0.0 {
-                        self.progress.overall_pct =
-                            (index as f64 + pct / 100.0) / total * 100.0;
+                        let completed = (self.progress.succeeded + self.progress.failed) as f64;
+                        self.progress.overall_pct = ((completed + pct / 100.0) / total * 100.0)
+                            .clamp(0.0, 100.0);
                     }
                 }
                 ConversionMessage::FileDone { index, success, error } => {
@@ -239,19 +242,18 @@ impl MediaForgeApp {
             match msg {
                 ImportMessage::FileDiscovered(file) => {
                     if !self.files.iter().any(|existing| existing.path == file.path) {
-                        self.files.push(file);
+                        self.files.push(*file);
                         self.formats_dirty = true;
                     }
                     self.status_message =
                         format!("Importing... {} file(s) added", self.files.len());
                 }
-                ImportMessage::BatchDone { added } => {
-                    self.is_importing = false;
-                    self.status_message = if added == 0 {
-                        "No supported media found".to_string()
-                    } else {
-                        format!("Ready \u{2022} imported {added} file(s)")
-                    };
+                ImportMessage::BatchDone => {
+                    self.active_import_jobs = self.active_import_jobs.saturating_sub(1);
+                    self.is_importing = self.active_import_jobs > 0;
+                    if !self.is_importing {
+                        self.status_message = "Ready".to_string();
+                    }
                 }
             }
         }
@@ -303,6 +305,7 @@ impl MediaForgeApp {
     }
 
     fn start_async_import(&mut self, path: PathBuf) {
+        self.active_import_jobs += 1;
         self.is_importing = true;
         self.status_message = "Scanning folder...".to_string();
 
@@ -312,8 +315,6 @@ impl MediaForgeApp {
 
         std::thread::spawn(move || {
             let found = detect::scan_directory(&path, max_depth);
-            let mut added = 0usize;
-
             for fp in found {
                 let mt = detect::detect_media_type(&fp);
                 if mt == MediaType::Unknown {
@@ -327,11 +328,10 @@ impl MediaForgeApp {
                     file.metadata = metadata::probe_media(&fp, &ffprobe_path);
                 }
 
-                added += 1;
-                let _ = sender.send(ImportMessage::FileDiscovered(file));
+                let _ = sender.send(ImportMessage::FileDiscovered(Box::new(file)));
             }
 
-            let _ = sender.send(ImportMessage::BatchDone { added });
+            let _ = sender.send(ImportMessage::BatchDone);
         });
     }
 

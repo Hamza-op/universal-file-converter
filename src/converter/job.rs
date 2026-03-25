@@ -126,7 +126,7 @@ impl Default for ConversionProgress {
 pub enum ConversionMessage {
     Started { total_files: usize },
     FileStarted { index: usize, name: String },
-    FileProgress { index: usize, pct: f64, speed: String, eta: Option<f64> },
+    FileProgress { pct: f64, speed: String, eta: Option<f64> },
     FileDone { index: usize, success: bool, error: Option<String> },
     AllDone { succeeded: usize, failed: usize },
     Log(String),
@@ -161,12 +161,7 @@ pub fn build_output_path(
     if !overwrite {
         let mut counter = 2u32;
         while output.exists() {
-            output = dir.join(format!("{}({}){}.{}",
-                if add_suffix { format!("{}({})", input.file_stem().unwrap().to_string_lossy(), suffix) } else { input.file_stem().unwrap().to_string_lossy().to_string() },
-                counter,
-                "",
-                format.extension
-            ));
+            output = dir.join(format!("{}({}).{}", base_name, counter, format.extension));
             counter += 1;
         }
     }
@@ -213,25 +208,42 @@ pub fn start_conversion(
                 config.overwrite_existing,
             );
 
-            // Ensure output directory exists
-            if let Some(parent) = output_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-
-            let result = match format.category {
-                FormatCategory::Image => {
-                    // Check if we can use native image crate
-                    let input_ext = task.path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                    if image_conv::can_handle_natively(input_ext, format.extension) {
-                        image_conv::convert_image(
-                            &task.path,
-                            &output_path,
-                            config.image_quality,
-                            None,
-                        )
-                    } else {
-                        // Fall back to FFmpeg for exotic image formats
-                        run_ffmpeg_conversion(
+            let result = if let Some(parent) = output_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    Err(format!(
+                        "Failed to prepare output directory '{}': {e}",
+                        parent.display()
+                    ))
+                } else {
+                    match format.category {
+                        FormatCategory::Image => {
+                            // Check if we can use native image crate
+                            let input_ext = task
+                                .path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("");
+                            if image_conv::can_handle_natively(input_ext, format.extension) {
+                                image_conv::convert_image(
+                                    &task.path,
+                                    &output_path,
+                                    config.image_quality,
+                                    None,
+                                )
+                            } else {
+                                // Fall back to FFmpeg for exotic image formats
+                                run_ffmpeg_conversion(
+                                    &task.path,
+                                    &output_path,
+                                    &format,
+                                    &config,
+                                    &task.metadata,
+                                    &sender,
+                                    &cancel_flag,
+                                )
+                            }
+                        }
+                        FormatCategory::Video | FormatCategory::Audio => run_ffmpeg_conversion(
                             &task.path,
                             &output_path,
                             &format,
@@ -239,20 +251,11 @@ pub fn start_conversion(
                             &task.metadata,
                             &sender,
                             &cancel_flag,
-                        )
+                        ),
                     }
                 }
-                FormatCategory::Video | FormatCategory::Audio => {
-                    run_ffmpeg_conversion(
-                        &task.path,
-                        &output_path,
-                        &format,
-                        &config,
-                        &task.metadata,
-                        &sender,
-                        &cancel_flag,
-                    )
-                }
+            } else {
+                Err("Failed to resolve output directory".to_string())
             };
 
             let success = result.is_ok();
@@ -273,7 +276,6 @@ pub fn start_conversion(
             let elapsed = batch_start.elapsed().as_secs_f64();
             let eta = progress::calculate_eta(elapsed, overall_pct);
             let _ = sender.send(ConversionMessage::FileProgress {
-                index: task.index,
                 pct: 100.0,
                 speed: String::new(),
                 eta,
@@ -346,7 +348,7 @@ fn run_ffmpeg_conversion(
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             let mut tail_lines: VecDeque<String> = VecDeque::with_capacity(MAX_STDERR_LINES);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let _ = sender.send(ConversionMessage::Log(line.clone()));
                 if tail_lines.len() >= MAX_STDERR_LINES {
                     tail_lines.pop_front();
@@ -357,7 +359,7 @@ fn run_ffmpeg_conversion(
             tail_lines.into_iter().collect::<Vec<_>>().join("\n")
         })
     } else {
-        std::thread::spawn(|| String::new())
+        std::thread::spawn(String::new)
     };
 
     // Read progress from stdout line by line
@@ -372,6 +374,7 @@ fn run_ffmpeg_conversion(
             // Check cancel before dropping into potentially blocking read
             if *cancel_flag.lock() {
                 let _ = child.kill();
+                let _ = child.wait();
                 return Err("Cancelled".to_string());
             }
 

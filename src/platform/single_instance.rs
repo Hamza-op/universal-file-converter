@@ -21,7 +21,17 @@ mod windows_impl {
     }
 
     pub struct SingleInstanceGuard {
-        _handle: HANDLE,
+        handle: HANDLE,
+    }
+
+    impl Drop for SingleInstanceGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if !self.handle.is_null() {
+                    CloseHandle(self.handle);
+                }
+            }
+        }
     }
 
     /// Try to acquire the single instance lock.
@@ -43,7 +53,7 @@ mod windows_impl {
                 return Ok(None);
             }
 
-            Ok(Some(SingleInstanceGuard { _handle: handle }))
+            Ok(Some(SingleInstanceGuard { handle }))
         }
     }
 
@@ -114,7 +124,14 @@ mod windows_impl {
     }
 
     fn connect_client(handle: HANDLE) -> bool {
-        unsafe { ConnectNamedPipe(handle, std::ptr::null_mut()) != 0 }
+        unsafe {
+            if ConnectNamedPipe(handle, std::ptr::null_mut()) != 0 {
+                true
+            } else {
+                // A client may connect between CreateNamedPipe and ConnectNamedPipe.
+                GetLastError() == ERROR_PIPE_CONNECTED
+            }
+        }
     }
 
     fn read_pipe(handle: HANDLE, buffer: &mut [u8]) -> usize {

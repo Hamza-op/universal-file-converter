@@ -33,7 +33,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item -Path "target\release\mediaforge.exe" -Destination "dist\MediaForge.exe"
-          Copy-Item -Path "target\release\mediaforge.exe" -Destination "dist\HTML-to-Office-Converter.exe" -ErrorAction SilentlyContinue
 
       - name: Update 'latest' tag
         run: |
@@ -47,9 +46,10 @@ jobs:
         with:
           tag_name: latest
           name: Latest Release
+          draft: false
+          prerelease: false
           make_latest: true
           files: |
             dist/MediaForge.exe
-            dist/HTML-to-Office-Converter.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

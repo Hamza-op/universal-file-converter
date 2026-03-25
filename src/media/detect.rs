@@ -107,6 +107,13 @@ fn scan_dir_recursive(dir: &Path, max_depth: usize, current_depth: usize, result
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if entry
+                .file_type()
+                .map(|ft| ft.is_symlink())
+                .unwrap_or(false)
+            {
+                continue;
+            }
             scan_dir_recursive(&path, max_depth, current_depth + 1, results);
         } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if is_supported_extension(ext) {

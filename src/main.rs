@@ -58,11 +58,11 @@ fn main() -> eframe::Result<()> {
     }
 
     // Single instance check
-    let ipc_receiver = match platform::single_instance::try_acquire(&initial_files) {
-        Ok(Some(_guard)) => {
+    let (single_instance_guard, ipc_receiver) = match platform::single_instance::try_acquire(&initial_files) {
+        Ok(Some(guard)) => {
             let (sender, receiver) = crossbeam_channel::unbounded();
             platform::single_instance::start_pipe_listener(sender);
-            Some(receiver)
+            (Some(guard), Some(receiver))
         }
         Ok(None) => {
             tracing::info!("Another instance is running. Forwarded argument(s). Exiting.");
@@ -70,7 +70,7 @@ fn main() -> eframe::Result<()> {
         }
         Err(e) => {
             tracing::error!("Single instance check failed: {}. Proceeding without single-instance guarantee.", e);
-            None
+            (None, None)
         }
     };
 
@@ -83,6 +83,8 @@ fn main() -> eframe::Result<()> {
             .with_drag_and_drop(true),
         ..Default::default()
     };
+
+    let _single_instance_guard = single_instance_guard;
 
     eframe::run_native(
         "MediaForge",
