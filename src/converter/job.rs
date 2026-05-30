@@ -14,6 +14,7 @@ use crate::converter::image_conv;
 use crate::converter::progress::{self, ProgressState};
 use crate::media::detect::MediaType;
 use crate::media::metadata;
+use crate::platform::CommandExt;
 
 #[derive(Debug, Clone)]
 pub struct InputFile {
@@ -27,6 +28,7 @@ pub struct InputFile {
     pub cached_filename: String,
     /// Cached size string — computed once, avoids per-frame allocation
     pub cached_size_string: String,
+    pub relative_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +37,7 @@ pub struct JobTask {
     pub path: PathBuf,
     pub filename: String,
     pub metadata: metadata::MediaMetadata,
+    pub relative_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +65,7 @@ impl InputFile {
             status: FileStatus::Pending,
             cached_filename,
             cached_size_string,
+            relative_path: None,
         }
     }
 
@@ -126,7 +130,7 @@ impl Default for ConversionProgress {
 pub enum ConversionMessage {
     Started { total_files: usize },
     FileStarted { index: usize, name: String },
-    FileProgress { pct: f64, speed: String, eta: Option<f64> },
+    FileProgress { index: usize, pct: f64, speed: String, eta: Option<f64> },
     FileDone { index: usize, success: bool, error: Option<String> },
     AllDone { succeeded: usize, failed: usize },
     Log(String),
@@ -135,11 +139,13 @@ pub enum ConversionMessage {
 /// Build the output path for a given input file
 pub fn build_output_path(
     input: &Path,
+    relative_path: Option<&Path>,
     output_dir: Option<&PathBuf>,
     format: &OutputFormat,
     add_suffix: bool,
     suffix: &str,
     overwrite: bool,
+    preserve_structure: bool,
 ) -> PathBuf {
     let dir = output_dir
         .cloned()
@@ -156,12 +162,20 @@ pub fn build_output_path(
         stem
     };
 
-    let mut output = dir.join(format!("{}.{}", base_name, format.extension));
+    let mut output = if preserve_structure && relative_path.is_some() && output_dir.is_some() {
+        let rel = relative_path.unwrap();
+        let rel_parent = rel.parent().unwrap_or(Path::new(""));
+        let dest_dir = dir.join(rel_parent);
+        dest_dir.join(format!("{}.{}", base_name, format.extension))
+    } else {
+        dir.join(format!("{}.{}", base_name, format.extension))
+    };
 
     if !overwrite {
         let mut counter = 2u32;
+        let parent_dir = output.parent().unwrap_or(Path::new(".")).to_path_buf();
         while output.exists() {
-            output = dir.join(format!("{}({}).{}", base_name, counter, format.extension));
+            output = parent_dir.join(format!("{}({}).{}", base_name, counter, format.extension));
             counter += 1;
         }
     }
@@ -183,56 +197,99 @@ pub fn start_conversion(
 
         let _ = sender.send(ConversionMessage::Started { total_files: total });
 
-        let mut succeeded = 0usize;
-        let mut failed = 0usize;
+        let succeeded = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let failed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let completed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let batch_start = Instant::now();
+        let tasks_queue = Arc::new(Mutex::new(tasks.into_iter().collect::<VecDeque<JobTask>>()));
+        
+        let num_workers = config.max_concurrent_conversions.clamp(1, 32).min(total);
+        let mut workers = Vec::with_capacity(num_workers);
 
-        for (order_idx, task) in tasks.iter().enumerate() {
-            // Check cancel
-            if *cancel_flag.lock() {
-                break;
-            }
+        for _ in 0..num_workers {
+            let tasks_queue = Arc::clone(&tasks_queue);
+            let cancel_flag = Arc::clone(&cancel_flag);
+            let sender = sender.clone();
+            let config = config.clone();
+            let format = format.clone();
+            let output_dir = output_dir.clone();
+            let succeeded = Arc::clone(&succeeded);
+            let failed = Arc::clone(&failed);
+            let completed_count = Arc::clone(&completed_count);
+            let batch_start = batch_start.clone();
 
-            let _ = sender.send(ConversionMessage::FileStarted {
-                index: task.index,
-                name: task.filename.clone(),
-            });
+            let worker = std::thread::spawn(move || {
+                loop {
+                    // Check cancel
+                    if *cancel_flag.lock() {
+                        break;
+                    }
 
-            let output_path = build_output_path(
-                &task.path,
-                output_dir.as_ref(),
-                &format,
-                config.add_suffix,
-                &config.default_suffix,
-                config.overwrite_existing,
-            );
+                    // Pop task
+                    let task = {
+                        let mut queue = tasks_queue.lock();
+                        queue.pop_front()
+                    };
 
-            let result = if let Some(parent) = output_path.parent() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    Err(format!(
-                        "Failed to prepare output directory '{}': {e}",
-                        parent.display()
-                    ))
-                } else {
-                    match format.category {
-                        FormatCategory::Image => {
-                            // Check if we can use native image crate
-                            let input_ext = task
-                                .path
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .unwrap_or("");
-                            if image_conv::can_handle_natively(input_ext, format.extension) {
-                                image_conv::convert_image(
-                                    &task.path,
-                                    &output_path,
-                                    config.image_quality,
-                                    None,
-                                )
-                            } else {
-                                // Fall back to FFmpeg for exotic image formats
-                                run_ffmpeg_conversion(
+                    let Some(task) = task else {
+                        break; // Queue is empty
+                    };
+
+                    let _ = sender.send(ConversionMessage::FileStarted {
+                        index: task.index,
+                        name: task.filename.clone(),
+                    });
+
+                    let output_path = build_output_path(
+                        &task.path,
+                        task.relative_path.as_deref(),
+                        output_dir.as_ref(),
+                        &format,
+                        config.add_suffix,
+                        &config.default_suffix,
+                        config.overwrite_existing,
+                        config.preserve_folder_structure,
+                    );
+
+                    let result = if let Some(parent) = output_path.parent() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            Err(format!(
+                                "Failed to prepare output directory '{}': {e}",
+                                parent.display()
+                            ))
+                        } else {
+                            match format.category {
+                                FormatCategory::Image => {
+                                    // Check if we can use native image crate
+                                    let input_ext = task
+                                        .path
+                                        .extension()
+                                        .and_then(|e| e.to_str())
+                                        .unwrap_or("");
+                                    if image_conv::can_handle_natively(input_ext, format.extension) {
+                                        image_conv::convert_image(
+                                            &task.path,
+                                            &output_path,
+                                            config.image_quality,
+                                            None,
+                                        )
+                                    } else {
+                                        // Fall back to FFmpeg for exotic image formats
+                                        run_ffmpeg_conversion(
+                                            task.index,
+                                            &task.path,
+                                            &output_path,
+                                            &format,
+                                            &config,
+                                            &task.metadata,
+                                            &sender,
+                                            &cancel_flag,
+                                        )
+                                    }
+                                }
+                                FormatCategory::Video | FormatCategory::Audio => run_ffmpeg_conversion(
+                                    task.index,
                                     &task.path,
                                     &output_path,
                                     &format,
@@ -240,49 +297,52 @@ pub fn start_conversion(
                                     &task.metadata,
                                     &sender,
                                     &cancel_flag,
-                                )
+                                ),
                             }
                         }
-                        FormatCategory::Video | FormatCategory::Audio => run_ffmpeg_conversion(
-                            &task.path,
-                            &output_path,
-                            &format,
-                            &config,
-                            &task.metadata,
-                            &sender,
-                            &cancel_flag,
-                        ),
+                    } else {
+                        Err("Failed to resolve output directory".to_string())
+                    };
+
+                    let success = result.is_ok();
+                    if success {
+                        succeeded.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    } else {
+                        failed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     }
+
+                    let _ = sender.send(ConversionMessage::FileDone {
+                        index: task.index,
+                        success,
+                        error: result.err(),
+                    });
+
+                    let completed = completed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+                    // Update overall progress
+                    let overall_pct = (completed as f64 / total as f64) * 100.0;
+                    let elapsed = batch_start.elapsed().as_secs_f64();
+                    let eta = progress::calculate_eta(elapsed, overall_pct);
+                    let _ = sender.send(ConversionMessage::FileProgress {
+                        index: task.index,
+                        pct: 100.0,
+                        speed: String::new(),
+                        eta,
+                    });
                 }
-            } else {
-                Err("Failed to resolve output directory".to_string())
-            };
-
-            let success = result.is_ok();
-            if success {
-                succeeded += 1;
-            } else {
-                failed += 1;
-            }
-
-            let _ = sender.send(ConversionMessage::FileDone {
-                index: task.index,
-                success,
-                error: result.err(),
             });
 
-            // Update overall progress
-            let overall_pct = ((order_idx + 1) as f64 / total as f64) * 100.0;
-            let elapsed = batch_start.elapsed().as_secs_f64();
-            let eta = progress::calculate_eta(elapsed, overall_pct);
-            let _ = sender.send(ConversionMessage::FileProgress {
-                pct: 100.0,
-                speed: String::new(),
-                eta,
-            });
+            workers.push(worker);
         }
 
-        let _ = sender.send(ConversionMessage::AllDone { succeeded, failed });
+        // Wait for all workers to finish
+        for worker in workers {
+            let _ = worker.join();
+        }
+
+        let succ_final = succeeded.load(std::sync::atomic::Ordering::SeqCst);
+        let fail_final = failed.load(std::sync::atomic::Ordering::SeqCst);
+        let _ = sender.send(ConversionMessage::AllDone { succeeded: succ_final, failed: fail_final });
     });
 }
 
@@ -290,6 +350,7 @@ pub fn start_conversion(
 const MAX_STDERR_LINES: usize = 80;
 
 fn run_ffmpeg_conversion(
+    index: usize,
     input: &Path,
     output: &Path,
     format: &OutputFormat,
@@ -298,6 +359,7 @@ fn run_ffmpeg_conversion(
     sender: &Sender<ConversionMessage>,
     cancel_flag: &Arc<Mutex<bool>>,
 ) -> Result<(), String> {
+    let file_start = Instant::now();
     let ffmpeg_path = config.ffmpeg_path();
 
     let args = match format.category {
@@ -401,6 +463,20 @@ fn run_ffmpeg_conversion(
                         }
                         .min(99.0);
 
+                        let elapsed = file_start.elapsed().as_secs_f64();
+                        let eta = progress::calculate_eta(elapsed, _pct);
+                        let speed_str = if prog.speed > 0.0 {
+                            format!("{:.1}x", prog.speed)
+                        } else {
+                            "N/A".to_string()
+                        };
+                        let _ = sender.send(ConversionMessage::FileProgress {
+                            index,
+                            pct: _pct,
+                            speed: speed_str,
+                            eta,
+                        });
+
                         if prog.progress_state == ProgressState::End {
                             let _ = sender.send(ConversionMessage::Log("Finalizing output file...".to_string()));
                             break;
@@ -434,25 +510,32 @@ fn run_ffmpeg_conversion(
             error_lines.last().unwrap_or(&"Unknown error").to_string()
         };
 
+        // Fallback to software encoding if HW acceleration was requested and failed
+        let is_hw = config.hw_accel != crate::config::HwAccel::Software;
+        let is_hw_error = error_msg.to_lowercase().contains("nvenc")
+            || error_msg.to_lowercase().contains("cuda")
+            || error_msg.to_lowercase().contains("qsv")
+            || error_msg.to_lowercase().contains("amf")
+            || error_msg.to_lowercase().contains("hardware")
+            || error_msg.to_lowercase().contains("driver")
+            || error_msg.to_lowercase().contains("init_failed");
+
+        if is_hw && is_hw_error {
+            let _ = sender.send(ConversionMessage::Log("Hardware acceleration failed. Falling back to software encoding...".to_string()));
+            let mut sw_config = config.clone();
+            sw_config.hw_accel = crate::config::HwAccel::Software;
+            return run_ffmpeg_conversion(
+                index,
+                input,
+                output,
+                format,
+                &sw_config,
+                input_meta,
+                sender,
+                cancel_flag,
+            );
+        }
+
         Err(error_msg)
-    }
-}
-
-/// Trait to add creation_flags on Windows Command
-trait CommandExt {
-    fn creation_flags(&mut self, flags: u32) -> &mut Self;
-}
-
-impl CommandExt for Command {
-    #[cfg(target_os = "windows")]
-    fn creation_flags(&mut self, flags: u32) -> &mut Self {
-        use std::os::windows::process::CommandExt as WinCmdExt;
-        WinCmdExt::creation_flags(self, flags);
-        self
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn creation_flags(&mut self, _flags: u32) -> &mut Self {
-        self
     }
 }

@@ -12,9 +12,10 @@ const FFPROBE_BIN: &[u8] = include_bytes!("../../bin/ffprobe.exe");
 static FFMPEG_PATHS: OnceLock<(String, String)> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
-pub fn get_ffmpeg_paths() -> Option<(String, String)> {
+pub fn get_ffmpeg_paths(custom_temp_dir: Option<std::path::PathBuf>) -> Option<(String, String)> {
     Some(FFMPEG_PATHS.get_or_init(|| {
-        let temp_dir = std::env::temp_dir().join("MediaForge_FFmpeg");
+        let base_dir = custom_temp_dir.unwrap_or_else(std::env::temp_dir);
+        let temp_dir = base_dir.join("MediaForge_FFmpeg");
         if !temp_dir.exists() && fs::create_dir_all(&temp_dir).is_err() {
             return (String::new(), String::new());
         }
@@ -37,7 +38,7 @@ pub fn get_ffmpeg_paths() -> Option<(String, String)> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_ffmpeg_paths() -> Option<(String, String)> {
+pub fn get_ffmpeg_paths(_custom_temp_dir: Option<std::path::PathBuf>) -> Option<(String, String)> {
     None
 }
 

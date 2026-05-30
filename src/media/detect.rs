@@ -90,14 +90,17 @@ pub fn supported_extensions() -> Vec<&'static str> {
 
 
 
-/// Recursively scan a directory for supported media files
-pub fn scan_directory(dir: &Path, max_depth: usize) -> Vec<std::path::PathBuf> {
-    let mut results = Vec::new();
-    scan_dir_recursive(dir, max_depth, 0, &mut results);
-    results
+/// Recursively scan a directory for supported media files, streaming results incrementally via a channel
+pub fn scan_directory(dir: &Path, max_depth: usize, sender: &crossbeam_channel::Sender<std::path::PathBuf>) {
+    scan_dir_recursive(dir, max_depth, 0, sender);
 }
 
-fn scan_dir_recursive(dir: &Path, max_depth: usize, current_depth: usize, results: &mut Vec<std::path::PathBuf>) {
+fn scan_dir_recursive(
+    dir: &Path,
+    max_depth: usize,
+    current_depth: usize,
+    sender: &crossbeam_channel::Sender<std::path::PathBuf>,
+) {
     if current_depth > max_depth {
         return;
     }
@@ -114,10 +117,10 @@ fn scan_dir_recursive(dir: &Path, max_depth: usize, current_depth: usize, result
             {
                 continue;
             }
-            scan_dir_recursive(&path, max_depth, current_depth + 1, results);
+            scan_dir_recursive(&path, max_depth, current_depth + 1, sender);
         } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if is_supported_extension(ext) {
-                results.push(path);
+                let _ = sender.send(path);
             }
         }
     }

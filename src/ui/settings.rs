@@ -52,6 +52,10 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
                         &mut app.config.play_sound_on_complete,
                         "Play sound on completion",
                     );
+                    ui.checkbox(
+                        &mut app.config.preserve_folder_structure,
+                        "Preserve folder structure when converting folders",
+                    );
 
                     ui.horizontal(|ui| {
                         ui.label("Max folder scan depth:");

@@ -125,6 +125,7 @@ impl MediaForgeApp {
                     path: f.path.clone(),
                     filename: f.cached_filename.clone(),
                     metadata: f.metadata.clone(),
+                    relative_path: f.relative_path.clone(),
                 })
             } else {
                 None
@@ -163,7 +164,11 @@ impl MediaForgeApp {
                         file.status = FileStatus::Converting;
                     }
                 }
-                ConversionMessage::FileProgress { pct, speed, eta } => {
+                ConversionMessage::FileProgress { index, pct, speed, eta } => {
+                    self.progress.current_file_index = index;
+                    if let Some(file) = self.files.get(index) {
+                        self.progress.current_file_name = file.filename().to_string();
+                    }
                     self.progress.current_file_pct = pct;
                     self.progress.speed_str = speed;
                     self.progress.eta_secs = eta;
@@ -314,14 +319,22 @@ impl MediaForgeApp {
         let max_depth = self.config.max_folder_scan_depth;
 
         std::thread::spawn(move || {
-            let found = detect::scan_directory(&path, max_depth);
-            for fp in found {
+            let (scan_sender, scan_receiver) = crossbeam_channel::unbounded();
+            let path_clone = path.clone();
+            
+            // Spawn sub-thread to walk directories and stream paths to our processor loop
+            std::thread::spawn(move || {
+                detect::scan_directory(&path_clone, max_depth, &scan_sender);
+            });
+
+            while let Ok(fp) = scan_receiver.recv() {
                 let mt = detect::detect_media_type(&fp);
                 if mt == MediaType::Unknown {
                     continue;
                 }
 
                 let mut file = InputFile::new(fp.clone(), mt);
+                file.relative_path = fp.strip_prefix(&path).ok().map(|p| p.to_path_buf());
                 if mt == MediaType::Image {
                     file.metadata = metadata::probe_image(&fp);
                 } else {

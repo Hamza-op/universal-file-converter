@@ -2,25 +2,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::config::{HwAccel, MediaForgeConfig};
-
-/// Trait to add creation_flags on Windows Command
-trait CommandExt {
-    fn creation_flags(&mut self, flags: u32) -> &mut Self;
-}
-
-impl CommandExt for Command {
-    #[cfg(target_os = "windows")]
-    fn creation_flags(&mut self, flags: u32) -> &mut Self {
-        use std::os::windows::process::CommandExt as WinCmdExt;
-        WinCmdExt::creation_flags(self, flags);
-        self
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn creation_flags(&mut self, _flags: u32) -> &mut Self {
-        self
-    }
-}
+use crate::platform::CommandExt;
 
 /// Output format descriptors — uses static strings to avoid heap allocations
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,18 +131,25 @@ pub fn build_video_args(
     ]);
 
     // Hardware acceleration
-    match config.hw_accel {
-        HwAccel::Nvidia if video_codec == "libx264" => {
-            if let Some(pos) = args.iter().position(|a| a == "libx264") {
-                args[pos] = "h264_nvenc".to_string();
+    let hw = config.hw_accel;
+    if video_codec == "libx264" {
+        if let Some(pos) = args.iter().position(|a| a == "libx264") {
+            match hw {
+                HwAccel::Nvidia | HwAccel::Auto => args[pos] = "h264_nvenc".to_string(),
+                HwAccel::Intel => args[pos] = "h264_qsv".to_string(),
+                HwAccel::Amd => args[pos] = "h264_amf".to_string(),
+                _ => {}
             }
         }
-        HwAccel::Nvidia if video_codec == "libx265" => {
-            if let Some(pos) = args.iter().position(|a| a == "libx265") {
-                args[pos] = "hevc_nvenc".to_string();
+    } else if video_codec == "libx265" {
+        if let Some(pos) = args.iter().position(|a| a == "libx265") {
+            match hw {
+                HwAccel::Nvidia | HwAccel::Auto => args[pos] = "hevc_nvenc".to_string(),
+                HwAccel::Intel => args[pos] = "hevc_qsv".to_string(),
+                HwAccel::Amd => args[pos] = "hevc_amf".to_string(),
+                _ => {}
             }
         }
-        _ => {}
     }
 
     if let Some(threads) = config.ffmpeg_threads {

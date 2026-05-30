@@ -1,24 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
-/// Trait to add creation_flags on Windows Command
-trait CommandExt {
-    fn creation_flags(&mut self, flags: u32) -> &mut Self;
-}
-
-impl CommandExt for Command {
-    #[cfg(target_os = "windows")]
-    fn creation_flags(&mut self, flags: u32) -> &mut Self {
-        use std::os::windows::process::CommandExt as WinCmdExt;
-        WinCmdExt::creation_flags(self, flags);
-        self
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn creation_flags(&mut self, _flags: u32) -> &mut Self {
-        self
-    }
-}
+use crate::platform::CommandExt;
 
 #[derive(Debug, Clone, Default)]
 pub struct MediaMetadata {
