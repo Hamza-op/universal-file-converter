@@ -26,6 +26,8 @@ mod windows_impl {
 
     impl Drop for SingleInstanceGuard {
         fn drop(&mut self) {
+            // SAFETY: CloseHandle is safe to call if self.handle is a valid, open Win32 handle.
+            // We ensure it is valid upon acquisition and check that it is non-null before closing.
             unsafe {
                 if !self.handle.is_null() {
                     CloseHandle(self.handle);
@@ -36,6 +38,9 @@ mod windows_impl {
 
     /// Try to acquire the single instance lock.
     pub fn try_acquire(files: &[String]) -> Result<Option<SingleInstanceGuard>, String> {
+        // SAFETY: CreateMutexW is safe to call with a null security descriptor and a pointer to a
+        // valid, null-terminated wide string. GetLastError and CloseHandle are standard Win32 calls.
+        // We verify that the returned handle is valid before returning it in the guard or closing it.
         unsafe {
             let name = mutex_name_wide();
             let handle = CreateMutexW(std::ptr::null(), 1, name.as_ptr());
@@ -88,6 +93,8 @@ mod windows_impl {
                         }
                         close_pipe(handle);
                     } else {
+                        // SAFETY: CloseHandle is safe to call here because the handle returned by
+                        // create_named_pipe_server is validated to be a valid handle (not INVALID_HANDLE_VALUE).
                         unsafe {
                             CloseHandle(handle);
                         }
@@ -103,6 +110,9 @@ mod windows_impl {
     fn create_named_pipe_server() -> Result<HANDLE, ()> {
         let name_wide = pipe_name_wide();
 
+        // SAFETY: CreateNamedPipeW is called with a pointer to a valid null-terminated wide string.
+        // The buffer sizes and open modes are typical. We explicitly validate that the returned
+        // handle is not INVALID_HANDLE_VALUE before passing it back.
         unsafe {
             let handle = CreateNamedPipeW(
                 name_wide.as_ptr(),
@@ -124,6 +134,8 @@ mod windows_impl {
     }
 
     fn connect_client(handle: HANDLE) -> bool {
+        // SAFETY: ConnectNamedPipe is safe to call with a valid named pipe handle and a null
+        // lpOverlapped pointer (since the pipe is opened in blocking wait mode).
         unsafe {
             if ConnectNamedPipe(handle, std::ptr::null_mut()) != 0 {
                 true
@@ -136,6 +148,9 @@ mod windows_impl {
 
     fn read_pipe(handle: HANDLE, buffer: &mut [u8]) -> usize {
         let mut bytes_read: u32 = 0;
+        // SAFETY: ReadFile is safe because the handle is verified to be a valid named pipe, the
+        // buffer slice represents a valid mutable memory region of matching size, and bytes_read is
+        // captured locally.
         unsafe {
             let result = ReadFile(
                 handle,
@@ -153,6 +168,8 @@ mod windows_impl {
     }
 
     fn close_pipe(handle: HANDLE) {
+        // SAFETY: DisconnectNamedPipe and CloseHandle are standard Win32 API functions.
+        // They are safe to call since the pipe handle is guaranteed to be valid and active here.
         unsafe {
             DisconnectNamedPipe(handle);
             CloseHandle(handle);

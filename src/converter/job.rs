@@ -539,3 +539,80 @@ fn run_ffmpeg_conversion(
         Err(error_msg)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::converter::ffmpeg::{FormatCategory, OutputFormat};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(1024 * 1024), "1.0 MB");
+        assert_eq!(format_size(1024 * 1024 * 1024 * 3), "3.00 GB");
+    }
+
+    #[test]
+    fn test_build_output_path_simple() {
+        let input = Path::new("files").join("video.mp4");
+        let format = OutputFormat {
+            label: "MP3",
+            extension: "mp3",
+            category: FormatCategory::Audio,
+        };
+
+        // Case 1: same directory, no suffix, overwrite = true
+        let out1 = build_output_path(
+            &input,
+            None,
+            None,
+            &format,
+            false,
+            "converted",
+            true,
+            false,
+        );
+        assert_eq!(out1, Path::new("files").join("video.mp3"));
+
+        // Case 2: same directory, with suffix, overwrite = true
+        let out2 = build_output_path(
+            &input,
+            None,
+            None,
+            &format,
+            true,
+            "custom",
+            true,
+            false,
+        );
+        assert_eq!(out2, Path::new("files").join("video(custom).mp3"));
+    }
+
+    #[test]
+    fn test_build_output_path_custom_dir_and_structure() {
+        let input = Path::new("source").join("media").join("video.mp4");
+        let rel_path = Path::new("media").join("video.mp4");
+        let output_dir = PathBuf::from("destination");
+        let format = OutputFormat {
+            label: "MP3",
+            extension: "mp3",
+            category: FormatCategory::Audio,
+        };
+
+        // Case 3: custom output dir, preserve structure, overwrite = true
+        let out3 = build_output_path(
+            &input,
+            Some(&rel_path),
+            Some(&output_dir),
+            &format,
+            false,
+            "converted",
+            true,
+            true,
+        );
+        assert_eq!(out3, Path::new("destination").join("media").join("video.mp3"));
+    }
+}

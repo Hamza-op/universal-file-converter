@@ -102,3 +102,54 @@ pub fn format_eta(eta_secs: f64) -> String {
         format!("{secs}s")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_progress_standard() {
+        let data = "frame=150\nfps=30.0\ntotal_size=102400\nout_time_us=5000000\nspeed=2.5x\nprogress=continue\n";
+        let p = parse_progress(data);
+        assert_eq!(p.frame, 150);
+        assert_eq!(p.fps, 30.0);
+        assert_eq!(p.total_size, 102400);
+        assert_eq!(p.out_time_us, 5000000);
+        assert_eq!(p.speed, 2.5);
+        assert_eq!(p.progress_state, ProgressState::Continue);
+    }
+
+    #[test]
+    fn test_parse_progress_legacy_and_end() {
+        let data = "out_time_ms=6000000\nspeed=N/A\nprogress=end\n";
+        let p = parse_progress(data);
+        assert_eq!(p.out_time_us, 6000000);
+        assert_eq!(p.progress_state, ProgressState::End);
+        assert_eq!(p.speed, 0.0);
+    }
+
+    #[test]
+    fn test_progress_percentage() {
+        let p = FfmpegProgress { out_time_us: 50, ..Default::default() };
+        assert_eq!(p.percentage(100), 50.0);
+        assert_eq!(p.percentage(0), 0.0);
+
+        let p2 = FfmpegProgress { out_time_us: 150, ..Default::default() };
+        assert_eq!(p2.percentage(100), 100.0);
+    }
+
+    #[test]
+    fn test_calculate_eta() {
+        assert_eq!(calculate_eta(10.0, 50.0), Some(10.0));
+        assert_eq!(calculate_eta(10.0, 0.0), None);
+        assert_eq!(calculate_eta(10.0, 100.0), None);
+        assert_eq!(calculate_eta(10.0, 120.0), None);
+    }
+
+    #[test]
+    fn test_format_eta() {
+        assert_eq!(format_eta(45.0), "45s");
+        assert_eq!(format_eta(125.0), "2m 5s");
+        assert_eq!(format_eta(3665.0), "1h 1m");
+    }
+}

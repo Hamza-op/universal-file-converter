@@ -125,3 +125,35 @@ fn scan_dir_recursive(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_is_supported_extension() {
+        assert!(is_supported_extension("png"));
+        assert!(is_supported_extension("PNG"));
+        assert!(is_supported_extension("mp4"));
+        assert!(is_supported_extension("MP3"));
+        assert!(!is_supported_extension("txt"));
+        assert!(!is_supported_extension("pdf"));
+    }
+
+    #[test]
+    fn test_detect_media_type() {
+        assert_eq!(detect_media_type(Path::new("test.png")), MediaType::Image);
+        assert_eq!(detect_media_type(Path::new("TEST.MP4")), MediaType::Video);
+        assert_eq!(detect_media_type(Path::new("audio.mp3")), MediaType::Audio);
+        assert_eq!(detect_media_type(Path::new("document.txt")), MediaType::Unknown);
+    }
+
+    #[test]
+    fn test_supported_extensions_list() {
+        let list = supported_extensions();
+        assert!(list.contains(&"png"));
+        assert!(list.contains(&"mp4"));
+        assert!(list.contains(&"mp3"));
+    }
+}
