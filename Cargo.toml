@@ -10,7 +10,7 @@ build = "build.rs"
 # GUI
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "accesskit", "wgpu", "wayland", "x11"] }
 egui = "0.31"
-egui_extras = { version = "0.31", features = ["image"] }
+egui_extras = { version = "0.34", features = ["image"] }
 
 # File dialogs
 rfd = "0.15"
