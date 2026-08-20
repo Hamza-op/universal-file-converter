@@ -1,55 +1,54 @@
-name: Release Executable
+name: Release
 
 on:
   push:
-    branches:
-      - main
-      - master
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    name: Build & Release Windows EXE
+    name: Build and publish Windows release
     runs-on: windows-latest
     
     steps:
-      - name: Checkout Code
+      - name: Checkout source
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Rust
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
-      - name: Build Release
-        run: cargo build --release
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $packageVersion = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ("v$packageVersion" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match Cargo package version v$packageVersion"
+          }
 
-      - name: Prepare Release Assets
+      - name: Test
+        run: cargo test --locked --all-targets
+
+      - name: Build release
+        run: cargo build --locked --release
+
+      - name: Prepare release assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item -Path "target\release\mediaforge.exe" -Destination "dist\MediaForge.exe"
+          (Get-FileHash "dist\MediaForge.exe" -Algorithm SHA256).Hash.ToLower() + "  MediaForge.exe" |
+            Set-Content -Encoding ascii "dist\MediaForge.exe.sha256"
 
-      - name: Update 'latest' tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f latest
-          git push -f origin latest
-
-      - name: Upload Release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest Release
           draft: false
           prerelease: false
           make_latest: true
+          generate_release_notes: true
           files: |
             dist/MediaForge.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            dist/MediaForge.exe.sha256

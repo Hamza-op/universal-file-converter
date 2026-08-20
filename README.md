@@ -33,7 +33,7 @@
 
 ### Windows Portable
 
-Grab the latest `mediaforge.exe` from the **Releases** page and run it. That's it. FFmpeg is embedded inside the executable.
+Grab `MediaForge.exe` and its optional SHA-256 checksum from the [Releases](https://github.com/Hamza-op/universal-file-converter/releases) page. FFmpeg is embedded inside the executable.
 
 ### macOS & Linux Requirements
 
@@ -50,8 +50,8 @@ On macOS and Linux, MediaForge requires `ffmpeg` and `ffprobe` to be installed o
 
 ```bash
 # Clone the repo
-git clone https://github.com/Hamza-op/MediaForge.git
-cd MediaForge
+git clone https://github.com/Hamza-op/universal-file-converter.git
+cd universal-file-converter
 
 # Build release (optimized, stripped)
 cargo build --release
@@ -150,7 +150,7 @@ Settings are stored in `mediaforge.toml` next to the exe (portable) or in `%APPD
 
 ## License
 
-MIT
+Licensed under the [MIT License](LICENSE).
 
 ---
 
