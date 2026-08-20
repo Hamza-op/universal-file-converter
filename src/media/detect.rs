@@ -10,7 +10,6 @@ pub enum MediaType {
 
 #[allow(dead_code)]
 impl MediaType {
-
     pub fn label(&self) -> &'static str {
         match self {
             MediaType::Image => "Image",
@@ -22,20 +21,18 @@ impl MediaType {
 }
 
 const IMAGE_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "webp", "bmp", "tiff", "tif", "gif", "ico", "avif",
-    "heic", "heif", "svg", "cr2", "nef", "arw", "dng", "psd", "tga", "ppm",
-    "pgm", "pbm", "exr", "hdr", "qoi",
+    "png", "jpg", "jpeg", "webp", "bmp", "tiff", "tif", "gif", "ico", "avif", "heic", "heif",
+    "svg", "cr2", "nef", "arw", "dng", "psd", "tga", "ppm", "pgm", "pbm", "exr", "hdr", "qoi",
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "mpeg", "mpg", "3gp",
-    "3g2", "m4v", "vob", "ogv", "ts", "mts", "m2ts", "asf", "dv", "f4v",
-    "rm", "rmvb",
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "mpeg", "mpg", "3gp", "3g2", "m4v", "vob",
+    "ogv", "ts", "mts", "m2ts", "asf", "dv", "f4v", "rm", "rmvb",
 ];
 
 const AUDIO_EXTENSIONS: &[&str] = &[
-    "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff", "aif",
-    "amr", "ac3", "dts", "ape", "wv", "mka", "spx", "caf", "au", "ra",
+    "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff", "aif", "amr", "ac3", "dts",
+    "ape", "wv", "mka", "spx", "caf", "au", "ra",
 ];
 
 pub fn detect_media_type(path: &Path) -> MediaType {
@@ -53,18 +50,16 @@ pub fn detect_media_type(path: &Path) -> MediaType {
     }
 
     // Fall back to magic byte detection
-    if let Ok(kind) = infer::get_from_path(path) {
-        if let Some(kind) = kind {
-            let mime = kind.mime_type();
-            if mime.starts_with("image/") {
-                return MediaType::Image;
-            }
-            if mime.starts_with("video/") {
-                return MediaType::Video;
-            }
-            if mime.starts_with("audio/") {
-                return MediaType::Audio;
-            }
+    if let Ok(Some(kind)) = infer::get_from_path(path) {
+        let mime = kind.mime_type();
+        if mime.starts_with("image/") {
+            return MediaType::Image;
+        }
+        if mime.starts_with("video/") {
+            return MediaType::Video;
+        }
+        if mime.starts_with("audio/") {
+            return MediaType::Audio;
         }
     }
 
@@ -88,10 +83,12 @@ pub fn supported_extensions() -> Vec<&'static str> {
     exts
 }
 
-
-
 /// Recursively scan a directory for supported media files, streaming results incrementally via a channel
-pub fn scan_directory(dir: &Path, max_depth: usize, sender: &crossbeam_channel::Sender<std::path::PathBuf>) {
+pub fn scan_directory(
+    dir: &Path,
+    max_depth: usize,
+    sender: &crossbeam_channel::Sender<std::path::PathBuf>,
+) {
     scan_dir_recursive(dir, max_depth, 0, sender);
 }
 
@@ -110,11 +107,7 @@ fn scan_dir_recursive(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if entry
-                .file_type()
-                .map(|ft| ft.is_symlink())
-                .unwrap_or(false)
-            {
+            if entry.file_type().map(|ft| ft.is_symlink()).unwrap_or(false) {
                 continue;
             }
             scan_dir_recursive(&path, max_depth, current_depth + 1, sender);
@@ -146,7 +139,10 @@ mod tests {
         assert_eq!(detect_media_type(Path::new("test.png")), MediaType::Image);
         assert_eq!(detect_media_type(Path::new("TEST.MP4")), MediaType::Video);
         assert_eq!(detect_media_type(Path::new("audio.mp3")), MediaType::Audio);
-        assert_eq!(detect_media_type(Path::new("document.txt")), MediaType::Unknown);
+        assert_eq!(
+            detect_media_type(Path::new("document.txt")),
+            MediaType::Unknown
+        );
     }
 
     #[test]

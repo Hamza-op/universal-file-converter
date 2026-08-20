@@ -21,49 +21,173 @@ pub enum FormatCategory {
 
 pub fn image_output_formats() -> &'static [OutputFormat] {
     static FORMATS: &[OutputFormat] = &[
-        OutputFormat { label: "PNG", extension: "png", category: FormatCategory::Image },
-        OutputFormat { label: "JPG", extension: "jpg", category: FormatCategory::Image },
-        OutputFormat { label: "WebP", extension: "webp", category: FormatCategory::Image },
-        OutputFormat { label: "BMP", extension: "bmp", category: FormatCategory::Image },
-        OutputFormat { label: "TIFF", extension: "tiff", category: FormatCategory::Image },
-        OutputFormat { label: "GIF", extension: "gif", category: FormatCategory::Image },
-        OutputFormat { label: "ICO", extension: "ico", category: FormatCategory::Image },
-        OutputFormat { label: "AVIF", extension: "avif", category: FormatCategory::Image },
+        OutputFormat {
+            label: "PNG",
+            extension: "png",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "JPG",
+            extension: "jpg",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "WebP",
+            extension: "webp",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "BMP",
+            extension: "bmp",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "TIFF",
+            extension: "tiff",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "GIF",
+            extension: "gif",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "ICO",
+            extension: "ico",
+            category: FormatCategory::Image,
+        },
+        OutputFormat {
+            label: "AVIF",
+            extension: "avif",
+            category: FormatCategory::Image,
+        },
     ];
     FORMATS
 }
 
 pub fn video_output_formats() -> &'static [OutputFormat] {
     static FORMATS: &[OutputFormat] = &[
-        OutputFormat { label: "MP4 (H.264)", extension: "mp4", category: FormatCategory::Video },
-        OutputFormat { label: "MP4 (H.265)", extension: "mp4", category: FormatCategory::Video },
-        OutputFormat { label: "MKV", extension: "mkv", category: FormatCategory::Video },
-        OutputFormat { label: "AVI", extension: "avi", category: FormatCategory::Video },
-        OutputFormat { label: "MOV", extension: "mov", category: FormatCategory::Video },
-        OutputFormat { label: "WebM (VP9)", extension: "webm", category: FormatCategory::Video },
-        OutputFormat { label: "WMV", extension: "wmv", category: FormatCategory::Video },
-        OutputFormat { label: "FLV", extension: "flv", category: FormatCategory::Video },
-        OutputFormat { label: "MPEG", extension: "mpeg", category: FormatCategory::Video },
-        OutputFormat { label: "3GP", extension: "3gp", category: FormatCategory::Video },
-        OutputFormat { label: "TS", extension: "ts", category: FormatCategory::Video },
-        OutputFormat { label: "GIF", extension: "gif", category: FormatCategory::Video },
-        OutputFormat { label: "OGV", extension: "ogv", category: FormatCategory::Video },
+        OutputFormat {
+            label: "MP4 (H.264)",
+            extension: "mp4",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "MP4 (H.265)",
+            extension: "mp4",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "MKV",
+            extension: "mkv",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "AVI",
+            extension: "avi",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "MOV",
+            extension: "mov",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "WebM (VP9)",
+            extension: "webm",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "WMV",
+            extension: "wmv",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "FLV",
+            extension: "flv",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "MPEG",
+            extension: "mpeg",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "3GP",
+            extension: "3gp",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "TS",
+            extension: "ts",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "GIF",
+            extension: "gif",
+            category: FormatCategory::Video,
+        },
+        OutputFormat {
+            label: "OGV",
+            extension: "ogv",
+            category: FormatCategory::Video,
+        },
     ];
     FORMATS
 }
 
 pub fn audio_output_formats() -> &'static [OutputFormat] {
     static FORMATS: &[OutputFormat] = &[
-        OutputFormat { label: "MP3", extension: "mp3", category: FormatCategory::Audio },
-        OutputFormat { label: "WAV", extension: "wav", category: FormatCategory::Audio },
-        OutputFormat { label: "FLAC", extension: "flac", category: FormatCategory::Audio },
-        OutputFormat { label: "AAC", extension: "aac", category: FormatCategory::Audio },
-        OutputFormat { label: "OGG", extension: "ogg", category: FormatCategory::Audio },
-        OutputFormat { label: "OPUS", extension: "opus", category: FormatCategory::Audio },
-        OutputFormat { label: "WMA", extension: "wma", category: FormatCategory::Audio },
-        OutputFormat { label: "AIFF", extension: "aiff", category: FormatCategory::Audio },
-        OutputFormat { label: "AC3", extension: "ac3", category: FormatCategory::Audio },
-        OutputFormat { label: "M4A", extension: "m4a", category: FormatCategory::Audio },
+        OutputFormat {
+            label: "MP3",
+            extension: "mp3",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "WAV",
+            extension: "wav",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "FLAC",
+            extension: "flac",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "AAC",
+            extension: "aac",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "OGG",
+            extension: "ogg",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "OPUS",
+            extension: "opus",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "WMA",
+            extension: "wma",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "AIFF",
+            extension: "aiff",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "AC3",
+            extension: "ac3",
+            category: FormatCategory::Audio,
+        },
+        OutputFormat {
+            label: "M4A",
+            extension: "m4a",
+            category: FormatCategory::Audio,
+        },
     ];
     FORMATS
 }
@@ -110,7 +234,10 @@ pub fn build_video_args(
 
     // Preset (only for x264/x265)
     if video_codec == "libx264" || video_codec == "libx265" {
-        args.extend(["-preset".to_string(), config.video_preset.as_str().to_string()]);
+        args.extend([
+            "-preset".to_string(),
+            config.video_preset.as_str().to_string(),
+        ]);
     }
 
     // Resolution

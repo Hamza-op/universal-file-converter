@@ -118,19 +118,24 @@ impl MediaForgeApp {
 
         self.status_message = "Converting...".to_string();
 
-        let tasks: Vec<job::JobTask> = self.files.iter().enumerate().filter_map(|(idx, f)| {
-            if f.selected {
-                Some(job::JobTask {
-                    index: idx,
-                    path: f.path.clone(),
-                    filename: f.cached_filename.clone(),
-                    metadata: f.metadata.clone(),
-                    relative_path: f.relative_path.clone(),
-                })
-            } else {
-                None
-            }
-        }).collect();
+        let tasks: Vec<job::JobTask> = self
+            .files
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, f)| {
+                if f.selected {
+                    Some(job::JobTask {
+                        index: idx,
+                        path: f.path.clone(),
+                        filename: f.cached_filename.clone(),
+                        metadata: f.metadata.clone(),
+                        relative_path: f.relative_path.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let config = self.config.clone();
         let output_dir = self.custom_output_dir.clone();
@@ -164,7 +169,12 @@ impl MediaForgeApp {
                         file.status = FileStatus::Converting;
                     }
                 }
-                ConversionMessage::FileProgress { index, pct, speed, eta } => {
+                ConversionMessage::FileProgress {
+                    index,
+                    pct,
+                    speed,
+                    eta,
+                } => {
                     self.progress.current_file_index = index;
                     if let Some(file) = self.files.get(index) {
                         self.progress.current_file_name = file.filename().to_string();
@@ -176,18 +186,20 @@ impl MediaForgeApp {
                     let total = self.progress.total_files as f64;
                     if total > 0.0 {
                         let completed = (self.progress.succeeded + self.progress.failed) as f64;
-                        self.progress.overall_pct = ((completed + pct / 100.0) / total * 100.0)
-                            .clamp(0.0, 100.0);
+                        self.progress.overall_pct =
+                            ((completed + pct / 100.0) / total * 100.0).clamp(0.0, 100.0);
                     }
                 }
-                ConversionMessage::FileDone { index, success, error } => {
+                ConversionMessage::FileDone {
+                    index,
+                    success,
+                    error,
+                } => {
                     if let Some(file) = self.files.get_mut(index) {
                         file.status = if success {
                             FileStatus::Done
                         } else {
-                            FileStatus::Failed(
-                                error.unwrap_or_else(|| "Unknown error".to_string()),
-                            )
+                            FileStatus::Failed(error.unwrap_or_else(|| "Unknown error".to_string()))
                         };
                     }
 
@@ -321,7 +333,7 @@ impl MediaForgeApp {
         std::thread::spawn(move || {
             let (scan_sender, scan_receiver) = crossbeam_channel::unbounded();
             let path_clone = path.clone();
-            
+
             // Spawn sub-thread to walk directories and stream paths to our processor loop
             std::thread::spawn(move || {
                 detect::scan_directory(&path_clone, max_depth, &scan_sender);
@@ -417,9 +429,11 @@ impl eframe::App for MediaForgeApp {
         // Main layout — tight margins to eliminate edge gaps
         let panel_fill = ctx.style().visuals.panel_fill;
         egui::CentralPanel::default()
-            .frame(egui::Frame::default()
-                .fill(panel_fill)
-                .inner_margin(egui::Margin::same(4)))
+            .frame(
+                egui::Frame::default()
+                    .fill(panel_fill)
+                    .inner_margin(egui::Margin::same(4)),
+            )
             .show(ctx, |ui| {
                 main_view::show(self, ui);
             });

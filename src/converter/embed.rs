@@ -13,28 +13,33 @@ static FFMPEG_PATHS: OnceLock<(String, String)> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
 pub fn get_ffmpeg_paths(custom_temp_dir: Option<std::path::PathBuf>) -> Option<(String, String)> {
-    Some(FFMPEG_PATHS.get_or_init(|| {
-        let base_dir = custom_temp_dir.unwrap_or_else(std::env::temp_dir);
-        let temp_dir = base_dir.join("MediaForge_FFmpeg");
-        if !temp_dir.exists() && fs::create_dir_all(&temp_dir).is_err() {
-            return (String::new(), String::new());
-        }
-        
-        let ffmpeg_path = temp_dir.join("ffmpeg.exe");
-        let ffprobe_path = temp_dir.join("ffprobe.exe");
+    Some(
+        FFMPEG_PATHS
+            .get_or_init(|| {
+                let base_dir = custom_temp_dir.unwrap_or_else(std::env::temp_dir);
+                let temp_dir = base_dir.join("MediaForge_FFmpeg");
+                if !temp_dir.exists() && fs::create_dir_all(&temp_dir).is_err() {
+                    return (String::new(), String::new());
+                }
 
-        if ensure_file(&ffmpeg_path, FFMPEG_BIN).is_err() {
-            return (String::new(), String::new());
-        }
-        if ensure_file(&ffprobe_path, FFPROBE_BIN).is_err() {
-            return (String::new(), String::new());
-        }
+                let ffmpeg_path = temp_dir.join("ffmpeg.exe");
+                let ffprobe_path = temp_dir.join("ffprobe.exe");
 
-        (
-            ffmpeg_path.to_string_lossy().to_string(),
-            ffprobe_path.to_string_lossy().to_string(),
-        )
-    }).clone()).filter(|(ffmpeg, ffprobe)| !ffmpeg.is_empty() && !ffprobe.is_empty())
+                if ensure_file(&ffmpeg_path, FFMPEG_BIN).is_err() {
+                    return (String::new(), String::new());
+                }
+                if ensure_file(&ffprobe_path, FFPROBE_BIN).is_err() {
+                    return (String::new(), String::new());
+                }
+
+                (
+                    ffmpeg_path.to_string_lossy().to_string(),
+                    ffprobe_path.to_string_lossy().to_string(),
+                )
+            })
+            .clone(),
+    )
+    .filter(|(ffmpeg, ffprobe)| !ffmpeg.is_empty() && !ffprobe.is_empty())
 }
 
 #[cfg(not(target_os = "windows"))]

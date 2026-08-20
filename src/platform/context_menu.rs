@@ -57,9 +57,8 @@ mod windows_impl {
 
     pub fn is_registered() -> bool {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let check_path = format!(
-            "Software\\Classes\\SystemFileAssociations\\.png\\shell\\{SHELL_KEY_NAME}"
-        );
+        let check_path =
+            format!("Software\\Classes\\SystemFileAssociations\\.png\\shell\\{SHELL_KEY_NAME}");
         hkcu.open_subkey(&check_path).is_ok()
     }
 }

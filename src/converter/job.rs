@@ -1,8 +1,8 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::io::{BufRead, BufReader};
 use std::time::Instant;
 
 use crossbeam_channel::Sender;
@@ -128,16 +128,35 @@ impl Default for ConversionProgress {
 /// Messages from the conversion worker to the UI
 #[derive(Debug, Clone)]
 pub enum ConversionMessage {
-    Started { total_files: usize },
-    FileStarted { index: usize, name: String },
-    FileProgress { index: usize, pct: f64, speed: String, eta: Option<f64> },
-    FileDone { index: usize, success: bool, error: Option<String> },
-    AllDone { succeeded: usize, failed: usize },
+    Started {
+        total_files: usize,
+    },
+    FileStarted {
+        index: usize,
+        name: String,
+    },
+    FileProgress {
+        index: usize,
+        pct: f64,
+        speed: String,
+        eta: Option<f64>,
+    },
+    FileDone {
+        index: usize,
+        success: bool,
+        error: Option<String>,
+    },
+    AllDone {
+        succeeded: usize,
+        failed: usize,
+    },
     Log(String),
 }
 
 /// Build the output path for a given input file
-pub fn build_output_path(
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn build_output_path(
     input: &Path,
     relative_path: Option<&Path>,
     output_dir: Option<&PathBuf>,
@@ -146,6 +165,32 @@ pub fn build_output_path(
     suffix: &str,
     overwrite: bool,
     preserve_structure: bool,
+) -> PathBuf {
+    let mut reserved = HashSet::new();
+    build_output_path_with_reserved(
+        input,
+        relative_path,
+        output_dir,
+        format,
+        add_suffix,
+        suffix,
+        overwrite,
+        preserve_structure,
+        &mut reserved,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_output_path_with_reserved(
+    input: &Path,
+    relative_path: Option<&Path>,
+    output_dir: Option<&PathBuf>,
+    format: &OutputFormat,
+    add_suffix: bool,
+    suffix: &str,
+    overwrite: bool,
+    preserve_structure: bool,
+    reserved: &mut HashSet<String>,
 ) -> PathBuf {
     let dir = output_dir
         .cloned()
@@ -162,25 +207,35 @@ pub fn build_output_path(
         stem
     };
 
-    let mut output = if preserve_structure && relative_path.is_some() && output_dir.is_some() {
-        let rel = relative_path.unwrap();
-        let rel_parent = rel.parent().unwrap_or(Path::new(""));
-        let dest_dir = dir.join(rel_parent);
-        dest_dir.join(format!("{}.{}", base_name, format.extension))
-    } else {
-        dir.join(format!("{}.{}", base_name, format.extension))
-    };
+    let mut output =
+        if let (true, Some(rel), Some(_)) = (preserve_structure, relative_path, output_dir) {
+            let rel_parent = rel.parent().unwrap_or(Path::new(""));
+            let dest_dir = dir.join(rel_parent);
+            dest_dir.join(format!("{}.{}", base_name, format.extension))
+        } else {
+            dir.join(format!("{}.{}", base_name, format.extension))
+        };
 
     if !overwrite {
         let mut counter = 2u32;
         let parent_dir = output.parent().unwrap_or(Path::new(".")).to_path_buf();
-        while output.exists() {
+        while output.exists() || reserved.contains(&output_key(&output)) {
             output = parent_dir.join(format!("{}({}).{}", base_name, counter, format.extension));
             counter += 1;
         }
     }
 
+    reserved.insert(output_key(&output));
     output
+}
+
+fn output_key(path: &Path) -> String {
+    let key = path.to_string_lossy().into_owned();
+    if cfg!(windows) {
+        key.to_lowercase()
+    } else {
+        key
+    }
 }
 
 /// Start the conversion pipeline in a background thread
@@ -202,8 +257,26 @@ pub fn start_conversion(
         let completed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let batch_start = Instant::now();
-        let tasks_queue = Arc::new(Mutex::new(tasks.into_iter().collect::<VecDeque<JobTask>>()));
-        
+        let mut reserved_outputs = HashSet::new();
+        let planned_tasks = tasks
+            .into_iter()
+            .map(|task| {
+                let output_path = build_output_path_with_reserved(
+                    &task.path,
+                    task.relative_path.as_deref(),
+                    output_dir.as_ref(),
+                    &format,
+                    config.add_suffix,
+                    &config.default_suffix,
+                    config.overwrite_existing,
+                    config.preserve_folder_structure,
+                    &mut reserved_outputs,
+                );
+                (task, output_path)
+            })
+            .collect::<VecDeque<_>>();
+        let tasks_queue = Arc::new(Mutex::new(planned_tasks));
+
         let num_workers = config.max_concurrent_conversions.clamp(1, 32).min(total);
         let mut workers = Vec::with_capacity(num_workers);
 
@@ -213,12 +286,9 @@ pub fn start_conversion(
             let sender = sender.clone();
             let config = config.clone();
             let format = format.clone();
-            let output_dir = output_dir.clone();
             let succeeded = Arc::clone(&succeeded);
             let failed = Arc::clone(&failed);
             let completed_count = Arc::clone(&completed_count);
-            let batch_start = batch_start.clone();
-
             let worker = std::thread::spawn(move || {
                 loop {
                     // Check cancel
@@ -232,7 +302,7 @@ pub fn start_conversion(
                         queue.pop_front()
                     };
 
-                    let Some(task) = task else {
+                    let Some((task, output_path)) = task else {
                         break; // Queue is empty
                     };
 
@@ -240,17 +310,6 @@ pub fn start_conversion(
                         index: task.index,
                         name: task.filename.clone(),
                     });
-
-                    let output_path = build_output_path(
-                        &task.path,
-                        task.relative_path.as_deref(),
-                        output_dir.as_ref(),
-                        &format,
-                        config.add_suffix,
-                        &config.default_suffix,
-                        config.overwrite_existing,
-                        config.preserve_folder_structure,
-                    );
 
                     let result = if let Some(parent) = output_path.parent() {
                         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -267,7 +326,8 @@ pub fn start_conversion(
                                         .extension()
                                         .and_then(|e| e.to_str())
                                         .unwrap_or("");
-                                    if image_conv::can_handle_natively(input_ext, format.extension) {
+                                    if image_conv::can_handle_natively(input_ext, format.extension)
+                                    {
                                         image_conv::convert_image(
                                             &task.path,
                                             &output_path,
@@ -288,16 +348,18 @@ pub fn start_conversion(
                                         )
                                     }
                                 }
-                                FormatCategory::Video | FormatCategory::Audio => run_ffmpeg_conversion(
-                                    task.index,
-                                    &task.path,
-                                    &output_path,
-                                    &format,
-                                    &config,
-                                    &task.metadata,
-                                    &sender,
-                                    &cancel_flag,
-                                ),
+                                FormatCategory::Video | FormatCategory::Audio => {
+                                    run_ffmpeg_conversion(
+                                        task.index,
+                                        &task.path,
+                                        &output_path,
+                                        &format,
+                                        &config,
+                                        &task.metadata,
+                                        &sender,
+                                        &cancel_flag,
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -317,7 +379,8 @@ pub fn start_conversion(
                         error: result.err(),
                     });
 
-                    let completed = completed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    let completed =
+                        completed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
                     // Update overall progress
                     let overall_pct = (completed as f64 / total as f64) * 100.0;
@@ -342,13 +405,17 @@ pub fn start_conversion(
 
         let succ_final = succeeded.load(std::sync::atomic::Ordering::SeqCst);
         let fail_final = failed.load(std::sync::atomic::Ordering::SeqCst);
-        let _ = sender.send(ConversionMessage::AllDone { succeeded: succ_final, failed: fail_final });
+        let _ = sender.send(ConversionMessage::AllDone {
+            succeeded: succ_final,
+            failed: fail_final,
+        });
     });
 }
 
 /// Max stderr lines to keep in memory during a single file conversion
 const MAX_STDERR_LINES: usize = 80;
 
+#[allow(clippy::too_many_arguments)]
 fn run_ffmpeg_conversion(
     index: usize,
     input: &Path,
@@ -397,7 +464,10 @@ fn run_ffmpeg_conversion(
     if total_duration_us == 0 || total_frames == 0 {
         let meta = metadata::probe_media(input, &config.ffprobe_path());
         if total_duration_us == 0 {
-            total_duration_us = meta.duration_secs.map(|d| (d * 1_000_000.0) as u64).unwrap_or(0);
+            total_duration_us = meta
+                .duration_secs
+                .map(|d| (d * 1_000_000.0) as u64)
+                .unwrap_or(0);
         }
         if total_frames == 0 {
             total_frames = meta.frame_count.unwrap_or(0);
@@ -432,7 +502,7 @@ fn run_ffmpeg_conversion(
 
         loop {
             line_buf.clear();
-            
+
             // Check cancel before dropping into potentially blocking read
             if *cancel_flag.lock() {
                 let _ = child.kill();
@@ -478,7 +548,9 @@ fn run_ffmpeg_conversion(
                         });
 
                         if prog.progress_state == ProgressState::End {
-                            let _ = sender.send(ConversionMessage::Log("Finalizing output file...".to_string()));
+                            let _ = sender.send(ConversionMessage::Log(
+                                "Finalizing output file...".to_string(),
+                            ));
                             break;
                         }
                     }
@@ -490,7 +562,9 @@ fn run_ffmpeg_conversion(
 
     let stderr_output = stderr_thread.join().unwrap_or_default();
 
-    let status = child.wait().map_err(|e| format!("FFmpeg process error: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("FFmpeg process error: {e}"))?;
 
     if status.success() {
         Ok(())
@@ -500,7 +574,9 @@ fn run_ffmpeg_conversion(
             .lines()
             .filter(|l| {
                 let l_lower = l.to_lowercase();
-                l_lower.contains("error") || l_lower.contains("invalid") || l_lower.contains("failed")
+                l_lower.contains("error")
+                    || l_lower.contains("invalid")
+                    || l_lower.contains("failed")
             })
             .collect();
 
@@ -521,7 +597,9 @@ fn run_ffmpeg_conversion(
             || error_msg.to_lowercase().contains("init_failed");
 
         if is_hw && is_hw_error {
-            let _ = sender.send(ConversionMessage::Log("Hardware acceleration failed. Falling back to software encoding...".to_string()));
+            let _ = sender.send(ConversionMessage::Log(
+                "Hardware acceleration failed. Falling back to software encoding...".to_string(),
+            ));
             let mut sw_config = config.clone();
             sw_config.hw_accel = crate::config::HwAccel::Software;
             return run_ffmpeg_conversion(
@@ -565,29 +643,11 @@ mod tests {
         };
 
         // Case 1: same directory, no suffix, overwrite = true
-        let out1 = build_output_path(
-            &input,
-            None,
-            None,
-            &format,
-            false,
-            "converted",
-            true,
-            false,
-        );
+        let out1 = build_output_path(&input, None, None, &format, false, "converted", true, false);
         assert_eq!(out1, Path::new("files").join("video.mp3"));
 
         // Case 2: same directory, with suffix, overwrite = true
-        let out2 = build_output_path(
-            &input,
-            None,
-            None,
-            &format,
-            true,
-            "custom",
-            true,
-            false,
-        );
+        let out2 = build_output_path(&input, None, None, &format, true, "custom", true, false);
         assert_eq!(out2, Path::new("files").join("video(custom).mp3"));
     }
 
@@ -613,6 +673,46 @@ mod tests {
             true,
             true,
         );
-        assert_eq!(out3, Path::new("destination").join("media").join("video.mp3"));
+        assert_eq!(
+            out3,
+            Path::new("destination").join("media").join("video.mp3")
+        );
+    }
+
+    #[test]
+    fn test_reserved_output_paths_are_unique_within_a_batch() {
+        let format = OutputFormat {
+            label: "MP3",
+            extension: "mp3",
+            category: FormatCategory::Audio,
+        };
+        let output_dir = PathBuf::from("destination");
+        let mut reserved = HashSet::new();
+
+        let first = build_output_path_with_reserved(
+            Path::new("source-a").join("track.wav").as_path(),
+            None,
+            Some(&output_dir),
+            &format,
+            false,
+            "converted",
+            false,
+            false,
+            &mut reserved,
+        );
+        let second = build_output_path_with_reserved(
+            Path::new("source-b").join("track.flac").as_path(),
+            None,
+            Some(&output_dir),
+            &format,
+            false,
+            "converted",
+            false,
+            false,
+            &mut reserved,
+        );
+
+        assert_eq!(first, output_dir.join("track.mp3"));
+        assert_eq!(second, output_dir.join("track(2).mp3"));
     }
 }

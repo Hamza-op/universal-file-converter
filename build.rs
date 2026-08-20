@@ -1,11 +1,13 @@
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
+        let package_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+        let windows_version = format!("{package_version}.0");
         let mut res = winresource::WindowsResource::new();
-        res.set_manifest(
+        let manifest = format!(
             r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
-    version="1.0.0.0"
+    version="{windows_version}"
     processorArchitecture="amd64"
     name="MediaForge"
     type="win32"
@@ -20,10 +22,11 @@ fn main() {
 </assembly>
 "#,
         );
+        res.set_manifest(&manifest);
         res.set("FileDescription", "MediaForge — All-in-One Media Converter");
         res.set("ProductName", "MediaForge");
-        res.set("FileVersion", "1.0.0.0");
-        res.set("ProductVersion", "1.0.0.0");
+        res.set("FileVersion", &windows_version);
+        res.set("ProductVersion", &windows_version);
         res.set("LegalCopyright", "MediaForge © 2026");
         if let Err(e) = res.compile() {
             eprintln!("Warning: Failed to compile Windows resource: {e}");

@@ -2,9 +2,9 @@
 mod windows_impl {
     use std::io::Write;
     use windows_sys::Win32::Foundation::*;
+    use windows_sys::Win32::Storage::FileSystem::*;
     use windows_sys::Win32::System::Pipes::*;
     use windows_sys::Win32::System::Threading::*;
-    use windows_sys::Win32::Storage::FileSystem::*;
 
     const PIPE_NAME_STR: &str = "\\\\.\\pipe\\MediaForge";
 
@@ -15,9 +15,7 @@ mod windows_impl {
     }
 
     fn pipe_name_wide() -> Vec<u16> {
-        "\\\\.\\pipe\\MediaForge\0"
-            .encode_utf16()
-            .collect()
+        "\\\\.\\pipe\\MediaForge\0".encode_utf16().collect()
     }
 
     pub struct SingleInstanceGuard {
@@ -64,10 +62,7 @@ mod windows_impl {
 
     fn send_files_to_running_instance(files: &[String]) {
         let payload = files.join("\n");
-        if let Ok(mut stream) = std::fs::OpenOptions::new()
-            .write(true)
-            .open(PIPE_NAME_STR)
-        {
+        if let Ok(mut stream) = std::fs::OpenOptions::new().write(true).open(PIPE_NAME_STR) {
             let _ = stream.write_all(payload.as_bytes());
         }
     }

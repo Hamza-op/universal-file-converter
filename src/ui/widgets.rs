@@ -1,13 +1,16 @@
-use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 use crate::ui::theme;
+use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
 /// Accent button with solid fill
 pub fn accent_button(ui: &mut Ui, text: &str) -> Response {
     let btn = egui::Button::new(
-        egui::RichText::new(text).color(Color32::WHITE).size(13.0).strong(),
+        egui::RichText::new(text)
+            .color(Color32::WHITE)
+            .size(13.0)
+            .strong(),
     )
     .fill(theme::ACCENT)
-    .stroke(Stroke::new(1.0, theme::ACCENT_HI))
+    .stroke(Stroke::new(1.0_f32, theme::ACCENT_HI))
     .corner_radius(CornerRadius::same(10))
     .min_size(Vec2::new(112.0, 32.0));
     ui.add(btn)
@@ -22,7 +25,7 @@ pub fn outline_button(ui: &mut Ui, text: &str) -> Response {
             .color(theme::text_primary(dark_mode)),
     )
     .fill(Color32::TRANSPARENT)
-    .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+    .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
     .corner_radius(CornerRadius::same(10))
     .min_size(Vec2::new(0.0, 30.0));
     ui.add(btn)
@@ -31,10 +34,13 @@ pub fn outline_button(ui: &mut Ui, text: &str) -> Response {
 /// Red danger button
 pub fn danger_button(ui: &mut Ui, text: &str) -> Response {
     let btn = egui::Button::new(
-        egui::RichText::new(text).color(Color32::WHITE).size(12.0).strong(),
+        egui::RichText::new(text)
+            .color(Color32::WHITE)
+            .size(12.0)
+            .strong(),
     )
     .fill(theme::ERROR)
-    .stroke(Stroke::new(1.0, Color32::from_rgb(255, 120, 130)))
+    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(255, 120, 130)))
     .corner_radius(CornerRadius::same(10))
     .min_size(Vec2::new(0.0, 30.0));
     ui.add(btn)
@@ -53,18 +59,16 @@ pub fn smooth_progress(ui: &mut Ui, pct: f32, label: &str) {
         ui.painter().rect_stroke(
             rect,
             rounding,
-            Stroke::new(1.0, theme::PANEL_STROKE),
+            Stroke::new(1.0_f32, theme::PANEL_STROKE),
             StrokeKind::Inside,
         );
 
         let fill_pct = pct.clamp(0.0, 1.0);
         if fill_pct > 0.005 {
             let fill_width = rect.width() * fill_pct;
-            let fill_rect = Rect::from_min_size(
-                rect.min,
-                Vec2::new(fill_width.max(24.0), rect.height()),
-            )
-            .intersect(rect);
+            let fill_rect =
+                Rect::from_min_size(rect.min, Vec2::new(fill_width.max(24.0), rect.height()))
+                    .intersect(rect);
 
             // Fill bar
             ui.painter().rect_filled(fill_rect, rounding, theme::ACCENT);
@@ -76,7 +80,12 @@ pub fn smooth_progress(ui: &mut Ui, pct: f32, label: &str) {
             );
             ui.painter().rect_filled(
                 highlight_rect,
-                CornerRadius { nw: 13, ne: 13, sw: 0, se: 0 },
+                CornerRadius {
+                    nw: 13,
+                    ne: 13,
+                    sw: 0,
+                    se: 0,
+                },
                 Color32::from_rgba_unmultiplied(255, 255, 255, 28),
             );
         }
@@ -124,7 +133,7 @@ pub fn drop_zone(ui: &mut Ui, is_hovering: bool, has_files: bool) -> Response {
         ui.painter().rect_stroke(
             rect,
             rounding,
-            Stroke::new(if is_hovering { 2.0 } else { 1.0 }, border),
+            Stroke::new(if is_hovering { 2.0_f32 } else { 1.0_f32 }, border),
             StrokeKind::Inside,
         );
 

@@ -130,11 +130,17 @@ mod tests {
 
     #[test]
     fn test_progress_percentage() {
-        let p = FfmpegProgress { out_time_us: 50, ..Default::default() };
+        let p = FfmpegProgress {
+            out_time_us: 50,
+            ..Default::default()
+        };
         assert_eq!(p.percentage(100), 50.0);
         assert_eq!(p.percentage(0), 0.0);
 
-        let p2 = FfmpegProgress { out_time_us: 150, ..Default::default() };
+        let p2 = FfmpegProgress {
+            out_time_us: 150,
+            ..Default::default()
+        };
         assert_eq!(p2.percentage(100), 100.0);
     }
 

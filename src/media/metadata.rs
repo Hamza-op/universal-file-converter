@@ -64,8 +64,10 @@ pub fn probe_media(path: &Path, ffprobe_path: &str) -> MediaMetadata {
 
     let output = Command::new(ffprobe_path)
         .args([
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             "-show_streams",
         ])
@@ -102,12 +104,24 @@ pub fn probe_media(path: &Path, ffprobe_path: &str) -> MediaMetadata {
     // Parse first relevant stream
     if let Some(streams) = json.get("streams").and_then(|v| v.as_array()) {
         for stream in streams {
-            let codec_type = stream.get("codec_type").and_then(|v| v.as_str()).unwrap_or("");
+            let codec_type = stream
+                .get("codec_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
             if codec_type == "video" {
-                meta.width = stream.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
-                meta.height = stream.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
-                meta.codec = stream.get("codec_name").and_then(|v| v.as_str()).map(String::from);
+                meta.width = stream
+                    .get("width")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                meta.height = stream
+                    .get("height")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                meta.codec = stream
+                    .get("codec_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
 
                 if let Some(r_frame_rate) = stream.get("r_frame_rate").and_then(|v| v.as_str()) {
                     if let Some((num, den)) = r_frame_rate.split_once('/') {
@@ -130,12 +144,18 @@ pub fn probe_media(path: &Path, ffprobe_path: &str) -> MediaMetadata {
                 }
                 break;
             } else if codec_type == "audio" && meta.codec.is_none() {
-                meta.codec = stream.get("codec_name").and_then(|v| v.as_str()).map(String::from);
+                meta.codec = stream
+                    .get("codec_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 meta.sample_rate = stream
                     .get("sample_rate")
                     .and_then(|v| v.as_str())
                     .and_then(|v| v.parse().ok());
-                meta.channels = stream.get("channels").and_then(|v| v.as_u64()).map(|v| v as u32);
+                meta.channels = stream
+                    .get("channels")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
 
                 if meta.duration_secs.is_none() {
                     if let Some(dur) = stream.get("duration").and_then(|v| v.as_str()) {

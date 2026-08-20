@@ -10,7 +10,7 @@ mod ui;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "MediaForge", about = "All-in-One Media Converter")]
+#[command(name = "MediaForge", version, about = "All-in-One Media Converter")]
 struct Cli {
     /// Files to convert
     #[arg(long, num_args = 0..)]
@@ -58,21 +58,25 @@ fn main() -> eframe::Result<()> {
     }
 
     // Single instance check
-    let (single_instance_guard, ipc_receiver) = match platform::single_instance::try_acquire(&initial_files) {
-        Ok(Some(guard)) => {
-            let (sender, receiver) = crossbeam_channel::unbounded();
-            platform::single_instance::start_pipe_listener(sender);
-            (Some(guard), Some(receiver))
-        }
-        Ok(None) => {
-            tracing::info!("Another instance is running. Forwarded argument(s). Exiting.");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            tracing::error!("Single instance check failed: {}. Proceeding without single-instance guarantee.", e);
-            (None, None)
-        }
-    };
+    let (single_instance_guard, ipc_receiver) =
+        match platform::single_instance::try_acquire(&initial_files) {
+            Ok(Some(guard)) => {
+                let (sender, receiver) = crossbeam_channel::unbounded();
+                platform::single_instance::start_pipe_listener(sender);
+                (Some(guard), Some(receiver))
+            }
+            Ok(None) => {
+                tracing::info!("Another instance is running. Forwarded argument(s). Exiting.");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                tracing::error!(
+                "Single instance check failed: {}. Proceeding without single-instance guarantee.",
+                e
+            );
+                (None, None)
+            }
+        };
 
     // Launch GUI
     let options = eframe::NativeOptions {
@@ -90,7 +94,11 @@ fn main() -> eframe::Result<()> {
         "MediaForge",
         options,
         Box::new(move |cc| {
-            Ok(Box::new(app::MediaForgeApp::new(cc, initial_files, ipc_receiver)))
+            Ok(Box::new(app::MediaForgeApp::new(
+                cc,
+                initial_files,
+                ipc_receiver,
+            )))
         }),
     )
 }

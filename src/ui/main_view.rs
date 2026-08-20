@@ -78,11 +78,7 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("◆")
-                            .size(22.0)
-                            .color(theme::ACCENT),
-                    );
+                    ui.label(RichText::new("◆").size(22.0).color(theme::ACCENT));
                     ui.label(
                         RichText::new("MediaForge")
                             .size(21.0)
@@ -96,11 +92,7 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
                             .size(11.0)
                             .color(theme::text_secondary(dark_mode)),
                     );
-                    ui.label(
-                        RichText::new("·")
-                            .size(11.0)
-                            .color(theme::TEXT_DIM),
-                    );
+                    ui.label(RichText::new("·").size(11.0).color(theme::TEXT_DIM));
                     ui.hyperlink_to(
                         RichText::new("github.com/Hamza-op")
                             .size(10.0)
@@ -123,7 +115,12 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
                     ("Ready", theme::ACCENT_LIGHT)
                 };
 
-                pill(ui, status_text, status_color, color_with_alpha(status_color, 28));
+                pill(
+                    ui,
+                    status_text,
+                    status_color,
+                    color_with_alpha(status_color, 28),
+                );
             });
         });
 
@@ -210,8 +207,7 @@ fn show_input_panel(app: &mut MediaForgeApp, ui: &mut Ui) {
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let all_selected =
-                    !app.files.is_empty() && app.files.iter().all(|f| f.selected);
+                let all_selected = !app.files.is_empty() && app.files.iter().all(|f| f.selected);
                 let label = if all_selected {
                     "Deselect All"
                 } else {
@@ -221,7 +217,7 @@ fn show_input_panel(app: &mut MediaForgeApp, ui: &mut Ui) {
                     .add(
                         egui::Button::new(RichText::new(label).size(11.0))
                             .fill(theme::inactive_chip(dark_mode))
-                            .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+                            .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
                             .corner_radius(CornerRadius::same(10))
                             .min_size(Vec2::new(94.0, 28.0)),
                     )
@@ -295,7 +291,7 @@ fn show_file_list(app: &mut MediaForgeApp, ui: &mut Ui) {
     let desired_height = ui.available_height().max(176.0);
     Frame::default()
         .fill(theme::surface_secondary(dark_mode))
-        .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+        .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
@@ -310,11 +306,9 @@ fn show_file_list(app: &mut MediaForgeApp, ui: &mut Ui) {
                             .color(theme::text_primary(dark_mode)),
                     );
                     ui.label(
-                        RichText::new(
-                            "Add files or a folder and everything stays on this screen.",
-                        )
-                        .size(11.0)
-                        .color(theme::text_secondary(dark_mode)),
+                        RichText::new("Add files or a folder and everything stays on this screen.")
+                            .size(11.0)
+                            .color(theme::text_secondary(dark_mode)),
                     );
                 });
                 return;
@@ -366,7 +360,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
 
     Frame::default()
         .fill(row_fill)
-        .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+        .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
         .corner_radius(CornerRadius::same(10))
         .inner_margin(egui::Margin::same(10))
         .show(ui, |ui| {
@@ -409,7 +403,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                         .add(
                             egui::Button::new(RichText::new("\u{2715}").size(10.0))
                                 .fill(theme::inactive_chip(dark_mode))
-                                .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+                                .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
                                 .corner_radius(CornerRadius::same(8))
                                 .min_size(Vec2::new(28.0, 24.0)),
                         )
@@ -495,9 +489,7 @@ fn show_quality_settings(ui: &mut Ui, category: &FormatCategory, config: &mut Me
             }
             FormatCategory::Audio => {
                 ui.horizontal_wrapped(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut config.audio_bitrate, 64..=320).text("Bitrate"),
-                    );
+                    ui.add(egui::Slider::new(&mut config.audio_bitrate, 64..=320).text("Bitrate"));
                     ui.label("Sample");
                     egui::ComboBox::from_id_salt("sr")
                         .selected_text(format!("{} Hz", config.audio_sample_rate))
@@ -564,7 +556,7 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
                     egui::Button::new(RichText::new(label).size(11.0).color(text_color))
                         .fill(fill)
                         .stroke(Stroke::new(
-                            if selected { 1.0 } else { 1.0 },
+                            1.0_f32,
                             if selected {
                                 theme::ACCENT_HI
                             } else {
@@ -608,7 +600,7 @@ fn show_format_picker(ui: &mut Ui, app: &mut MediaForgeApp, formats: &[OutputFor
                 .add(
                     egui::Button::new(RichText::new(format.label).size(11.0).color(text_color))
                         .fill(fill)
-                        .stroke(Stroke::new(1.0, stroke))
+                        .stroke(Stroke::new(1.0_f32, stroke))
                         .corner_radius(CornerRadius::same(16))
                         .min_size(Vec2::new(0.0, 24.0)),
                 )
@@ -730,7 +722,7 @@ fn show_convert_button(app: &mut MediaForgeApp, ui: &mut Ui) {
                         .color(Color32::WHITE),
                 )
                 .fill(theme::ACCENT)
-                .stroke(Stroke::new(1.0, theme::ACCENT_HI))
+                .stroke(Stroke::new(1.0_f32, theme::ACCENT_HI))
                 .corner_radius(CornerRadius::same(12))
                 .min_size(Vec2::new(btn_width, 36.0)),
             )
@@ -817,7 +809,7 @@ fn compute_available_formats(app: &MediaForgeApp) -> Vec<OutputFormat> {
 fn card_frame(fill: Color32, margin: i8) -> Frame {
     Frame::default()
         .fill(fill)
-        .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+        .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
         .corner_radius(CornerRadius::same(16))
         .inner_margin(egui::Margin::same(margin))
 }
@@ -827,7 +819,7 @@ fn subtle_panel(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     let w = ui.available_width();
     Frame::default()
         .fill(theme::surface_tertiary(dark_mode))
-        .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+        .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
         .corner_radius(CornerRadius::same(12))
         .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
@@ -856,7 +848,7 @@ fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
     let dark_mode = ui.visuals().dark_mode;
     Frame::default()
         .fill(theme::soft_fill(dark_mode))
-        .stroke(Stroke::new(1.0, theme::PANEL_STROKE))
+        .stroke(Stroke::new(1.0_f32, theme::PANEL_STROKE))
         .corner_radius(CornerRadius::same(10))
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
@@ -879,7 +871,7 @@ fn compact_stat(ui: &mut Ui, label: &str, value: &str) {
 fn pill(ui: &mut Ui, text: &str, text_color: Color32, fill: Color32) {
     Frame::default()
         .fill(fill)
-        .stroke(Stroke::new(1.0, color_with_alpha(text_color, 44)))
+        .stroke(Stroke::new(1.0_f32, color_with_alpha(text_color, 44)))
         .corner_radius(CornerRadius::same(255))
         .inner_margin(egui::Margin::symmetric(10, 4))
         .show(ui, |ui| {

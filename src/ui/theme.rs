@@ -21,33 +21,33 @@ pub fn dark_theme() -> Visuals {
     v.extreme_bg_color = BG_APP;
 
     v.selection.bg_fill = ACCENT;
-    v.selection.stroke = Stroke::new(1.0, ACCENT_HI);
+    v.selection.stroke = Stroke::new(1.0_f32, ACCENT_HI);
     v.hyperlink_color = ACCENT_HI;
 
     v.widgets.noninteractive.bg_fill = BG_CARD;
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT_SECONDARY);
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
     v.widgets.noninteractive.corner_radius = CornerRadius::same(10);
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER_DARK);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_DARK);
 
     v.widgets.inactive.bg_fill = BG_CARD_ALT;
-    v.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
     v.widgets.inactive.corner_radius = CornerRadius::same(10);
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER_DARK);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_DARK);
 
     v.widgets.hovered.bg_fill = BG_HOVER;
-    v.widgets.hovered.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     v.widgets.hovered.corner_radius = CornerRadius::same(10);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.5, ACCENT);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.5_f32, ACCENT);
 
     v.widgets.active.bg_fill = ACCENT;
-    v.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     v.widgets.active.corner_radius = CornerRadius::same(10);
 
     v.widgets.open.bg_fill = BG_HOVER;
-    v.widgets.open.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
+    v.widgets.open.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
     v.widgets.open.corner_radius = CornerRadius::same(10);
 
-    v.window_stroke = Stroke::new(1.0, BORDER_DARK);
+    v.window_stroke = Stroke::new(1.0_f32, BORDER_DARK);
     v.window_corner_radius = CornerRadius::same(16);
 
     v
@@ -60,26 +60,26 @@ pub fn light_theme() -> Visuals {
     v.panel_fill = Color32::from_rgb(252, 248, 244);
     v.faint_bg_color = Color32::from_rgb(244, 238, 232);
     v.selection.bg_fill = ACCENT;
-    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
+    v.selection.stroke = Stroke::new(1.0_f32, Color32::WHITE);
     v.widgets.noninteractive.corner_radius = CornerRadius::same(10);
     v.widgets.inactive.corner_radius = CornerRadius::same(10);
     v.widgets.hovered.corner_radius = CornerRadius::same(10);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.5, ACCENT);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.5_f32, ACCENT);
     v.widgets.active.bg_fill = ACCENT;
-    v.widgets.active.fg_stroke = Stroke::new(1.0, Color32::WHITE);
+    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     v.widgets.active.corner_radius = CornerRadius::same(10);
     v
 }
 
 // ──── Accent colors — Rose / Coral spectrum ────
-pub const ACCENT: Color32 = Color32::from_rgb(212, 78, 88);        // Warm rose
-pub const ACCENT_HI: Color32 = Color32::from_rgb(244, 114, 120);   // Bright coral
+pub const ACCENT: Color32 = Color32::from_rgb(212, 78, 88); // Warm rose
+pub const ACCENT_HI: Color32 = Color32::from_rgb(244, 114, 120); // Bright coral
 pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(248, 152, 148); // Soft peach
-pub const ACCENT_WARM: Color32 = Color32::from_rgb(242, 172, 68);  // Warm amber
-pub const SUCCESS: Color32 = Color32::from_rgb(72, 199, 142);      // Mint green
-pub const ERROR: Color32 = Color32::from_rgb(232, 72, 85);         // Vivid red
-pub const TEXT_DIM: Color32 = Color32::from_rgb(136, 124, 118);    // Warm muted
-pub const PROGRESS_BG: Color32 = Color32::from_rgb(36, 30, 42);    // Deep violet-black
+pub const ACCENT_WARM: Color32 = Color32::from_rgb(242, 172, 68); // Warm amber
+pub const SUCCESS: Color32 = Color32::from_rgb(72, 199, 142); // Mint green
+pub const ERROR: Color32 = Color32::from_rgb(232, 72, 85); // Vivid red
+pub const TEXT_DIM: Color32 = Color32::from_rgb(136, 124, 118); // Warm muted
+pub const PROGRESS_BG: Color32 = Color32::from_rgb(36, 30, 42); // Deep violet-black
 pub const PANEL_STROKE: Color32 = BORDER_DARK;
 
 // ──── Semantic surface helpers ────
@@ -152,12 +152,25 @@ pub fn configure_fonts(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
 
     style.text_styles = [
-        (TextStyle::Heading, FontId::new(19.0, FontFamily::Proportional)),
+        (
+            TextStyle::Heading,
+            FontId::new(19.0, FontFamily::Proportional),
+        ),
         (TextStyle::Body, FontId::new(13.5, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(11.5, FontFamily::Monospace)),
-        (TextStyle::Button, FontId::new(13.0, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(11.0, FontFamily::Proportional)),
-    ].into();
+        (
+            TextStyle::Monospace,
+            FontId::new(11.5, FontFamily::Monospace),
+        ),
+        (
+            TextStyle::Button,
+            FontId::new(13.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Small,
+            FontId::new(11.0, FontFamily::Proportional),
+        ),
+    ]
+    .into();
 
     style.spacing.item_spacing = egui::vec2(6.0, 5.0);
     style.spacing.button_padding = egui::vec2(14.0, 7.0);

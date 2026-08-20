@@ -126,7 +126,9 @@ impl MediaForgeConfig {
         }
 
         if allow_embedded {
-            if let Some((ffmpeg, ffprobe)) = crate::converter::embed::get_ffmpeg_paths(self.temp_dir.clone()) {
+            if let Some((ffmpeg, ffprobe)) =
+                crate::converter::embed::get_ffmpeg_paths(self.temp_dir.clone())
+            {
                 let embedded = if tool.eq_ignore_ascii_case("ffmpeg") {
                     ffmpeg
                 } else {
