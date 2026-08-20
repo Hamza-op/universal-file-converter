@@ -43,7 +43,7 @@ jobs:
             Set-Content -Encoding ascii "dist\MediaForge.exe.sha256"
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           draft: false
           prerelease: false
