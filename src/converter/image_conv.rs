@@ -37,6 +37,13 @@ pub fn convert_image(
             img.save(output)
                 .map_err(|e| format!("WebP encode failed: {e}"))?;
         }
+        ImageFormat::Ico => {
+            // ICO's embedded PNG representation requires RGBA; saving an RGB
+            // DynamicImage produces an ICO that common decoders reject.
+            image::DynamicImage::ImageRgba8(img.to_rgba8())
+                .save(output)
+                .map_err(|e| format!("ICO encode failed: {e}"))?;
+        }
         _ => {
             img.save(output)
                 .map_err(|e| format!("Image save failed: {e}"))?;
@@ -64,8 +71,63 @@ fn ext_to_image_format(ext: &str) -> Option<ImageFormat> {
 pub fn can_handle_natively(input_ext: &str, output_ext: &str) -> bool {
     let native_input = matches!(
         input_ext.to_lowercase().as_str(),
-        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tiff" | "tif" | "gif" | "ico" | "avif"
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tiff" | "tif" | "gif" | "ico"
     );
     let native_output = ext_to_image_format(output_ext).is_some();
     native_input && native_output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock must be after epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("mediaforge-image-test-{nonce}"));
+            fs::create_dir_all(&path).expect("test directory must be creatable");
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn advertised_native_image_formats_round_trip() {
+        let dir = TestDir::new();
+        let input = dir.0.join("fixture.png");
+        let fixture = image::RgbImage::from_fn(32, 24, |x, y| {
+            image::Rgb([(x * 7) as u8, (y * 9) as u8, ((x + y) * 3) as u8])
+        });
+        fixture.save(&input).expect("PNG fixture must be writable");
+
+        for extension in ["png", "jpg", "webp", "bmp", "tiff", "gif", "ico", "avif"] {
+            let output = dir.0.join(format!("output.{extension}"));
+            convert_image(&input, &output, 82, None)
+                .unwrap_or_else(|error| panic!("{extension} conversion failed: {error}"));
+            if extension == "avif" {
+                assert!(
+                    output.metadata().expect("AVIF output must exist").len() > 0,
+                    "AVIF output was empty"
+                );
+            } else {
+                let decoded = image::open(&output)
+                    .unwrap_or_else(|error| panic!("{extension} output was unreadable: {error}"));
+                assert_eq!(decoded.width(), 32, "{extension} width changed");
+                assert_eq!(decoded.height(), 24, "{extension} height changed");
+            }
+        }
+    }
 }

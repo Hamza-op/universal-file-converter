@@ -1,7 +1,9 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -45,6 +47,7 @@ pub enum FileStatus {
     Pending,
     Converting,
     Done,
+    Cancelled,
     Failed(String),
 }
 
@@ -93,6 +96,7 @@ pub fn format_size(bytes: u64) -> String {
 #[derive(Debug, Clone)]
 pub struct ConversionProgress {
     pub current_file_index: usize,
+    pub current_file_position: usize,
     pub total_files: usize,
     pub current_file_name: String,
     pub current_file_pct: f64,
@@ -103,13 +107,16 @@ pub struct ConversionProgress {
     pub is_complete: bool,
     pub succeeded: usize,
     pub failed: usize,
+    pub cancelled: usize,
     pub log_lines: VecDeque<String>,
+    pub(crate) file_progress: HashMap<usize, f64>,
 }
 
 impl Default for ConversionProgress {
     fn default() -> Self {
         Self {
             current_file_index: 0,
+            current_file_position: 0,
             total_files: 0,
             current_file_name: String::new(),
             current_file_pct: 0.0,
@@ -120,9 +127,34 @@ impl Default for ConversionProgress {
             is_complete: false,
             succeeded: 0,
             failed: 0,
+            cancelled: 0,
             log_lines: VecDeque::new(),
+            file_progress: HashMap::new(),
         }
     }
+}
+
+impl ConversionProgress {
+    pub fn update_file_progress(&mut self, index: usize, pct: f64) {
+        self.file_progress.insert(index, pct.clamp(0.0, 100.0));
+        self.recalculate_overall_progress();
+    }
+
+    fn recalculate_overall_progress(&mut self) {
+        if self.total_files == 0 {
+            self.overall_pct = 0.0;
+            return;
+        }
+        self.overall_pct =
+            (self.file_progress.values().sum::<f64>() / self.total_files as f64).clamp(0.0, 100.0);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConversionOutcome {
+    Succeeded,
+    Failed(String),
+    Cancelled,
 }
 
 /// Messages from the conversion worker to the UI
@@ -133,6 +165,7 @@ pub enum ConversionMessage {
     },
     FileStarted {
         index: usize,
+        position: usize,
         name: String,
     },
     FileProgress {
@@ -143,12 +176,12 @@ pub enum ConversionMessage {
     },
     FileDone {
         index: usize,
-        success: bool,
-        error: Option<String>,
+        outcome: ConversionOutcome,
     },
     AllDone {
         succeeded: usize,
         failed: usize,
+        cancelled: usize,
     },
     Log(String),
 }
@@ -216,13 +249,14 @@ fn build_output_path_with_reserved(
             dir.join(format!("{}.{}", base_name, format.extension))
         };
 
-    if !overwrite {
-        let mut counter = 2u32;
-        let parent_dir = output.parent().unwrap_or(Path::new(".")).to_path_buf();
-        while output.exists() || reserved.contains(&output_key(&output)) {
-            output = parent_dir.join(format!("{}({}).{}", base_name, counter, format.extension));
-            counter += 1;
-        }
+    let mut counter = 2u32;
+    let parent_dir = output.parent().unwrap_or(Path::new(".")).to_path_buf();
+    while paths_equivalent(input, &output)
+        || reserved.contains(&output_key(&output))
+        || (!overwrite && output.exists())
+    {
+        output = parent_dir.join(format!("{}({}).{}", base_name, counter, format.extension));
+        counter += 1;
     }
 
     reserved.insert(output_key(&output));
@@ -230,11 +264,127 @@ fn build_output_path_with_reserved(
 }
 
 fn output_key(path: &Path) -> String {
-    let key = path.to_string_lossy().into_owned();
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    };
+    let key = absolute.to_string_lossy().replace('/', "\\");
     if cfg!(windows) {
         key.to_lowercase()
     } else {
         key
+    }
+}
+
+fn paths_equivalent(left: &Path, right: &Path) -> bool {
+    output_key(left) == output_key(right)
+}
+
+static STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct StagedOutput {
+    path: PathBuf,
+    committed: bool,
+}
+
+impl StagedOutput {
+    fn beside(final_path: &Path) -> Result<Self, String> {
+        let parent = final_path
+            .parent()
+            .ok_or_else(|| "Failed to resolve output directory".to_string())?;
+        let stem = final_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("output");
+        let extension = final_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("tmp");
+        let nonce = STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let filename = format!(
+            ".{stem}.mediaforge-part-{}-{nonce}.{extension}",
+            std::process::id()
+        );
+        Ok(Self {
+            path: parent.join(filename),
+            committed: false,
+        })
+    }
+
+    fn commit(mut self, final_path: &Path, overwrite: bool) -> Result<(), String> {
+        if final_path.exists() {
+            if !overwrite {
+                return Err(format!(
+                    "Output '{}' appeared while conversion was running; the existing file was preserved",
+                    final_path.display()
+                ));
+            }
+            replace_existing(&self.path, final_path)?;
+        } else {
+            fs::rename(&self.path, final_path).map_err(|error| {
+                format!(
+                    "Failed to finalize output '{}': {error}",
+                    final_path.display()
+                )
+            })?;
+        }
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for StagedOutput {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn replace_existing(staged_path: &Path, final_path: &Path) -> Result<(), String> {
+    let backup = final_path.with_file_name(format!(
+        ".{}.mediaforge-backup-{}",
+        final_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("output"),
+        STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    fs::rename(final_path, &backup).map_err(|error| {
+        format!(
+            "Failed to preserve existing output '{}': {error}",
+            final_path.display()
+        )
+    })?;
+
+    if let Err(error) = fs::rename(staged_path, final_path) {
+        let restore_error = fs::rename(&backup, final_path).err();
+        return Err(match restore_error {
+            Some(restore_error) => format!(
+                "Failed to replace output '{}': {error}; restoring the original also failed: {restore_error}",
+                final_path.display()
+            ),
+            None => format!("Failed to replace output '{}': {error}", final_path.display()),
+        });
+    }
+
+    let _ = fs::remove_file(&backup);
+    Ok(())
+}
+
+#[derive(Debug)]
+enum JobFailure {
+    Failed(String),
+    Cancelled,
+}
+
+impl From<String> for JobFailure {
+    fn from(value: String) -> Self {
+        Self::Failed(value)
     }
 }
 
@@ -252,15 +402,17 @@ pub fn start_conversion(
 
         let _ = sender.send(ConversionMessage::Started { total_files: total });
 
-        let succeeded = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let failed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let completed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let succeeded = Arc::new(AtomicUsize::new(0));
+        let failed = Arc::new(AtomicUsize::new(0));
+        let cancelled = Arc::new(AtomicUsize::new(0));
+        let completed_count = Arc::new(AtomicUsize::new(0));
 
         let batch_start = Instant::now();
         let mut reserved_outputs = HashSet::new();
         let planned_tasks = tasks
             .into_iter()
-            .map(|task| {
+            .enumerate()
+            .map(|(position, task)| {
                 let output_path = build_output_path_with_reserved(
                     &task.path,
                     task.relative_path.as_deref(),
@@ -272,7 +424,7 @@ pub fn start_conversion(
                     config.preserve_folder_structure,
                     &mut reserved_outputs,
                 );
-                (task, output_path)
+                (task, output_path, position + 1)
             })
             .collect::<VecDeque<_>>();
         let tasks_queue = Arc::new(Mutex::new(planned_tasks));
@@ -288,6 +440,7 @@ pub fn start_conversion(
             let format = format.clone();
             let succeeded = Arc::clone(&succeeded);
             let failed = Arc::clone(&failed);
+            let cancelled = Arc::clone(&cancelled);
             let completed_count = Arc::clone(&completed_count);
             let worker = std::thread::spawn(move || {
                 loop {
@@ -302,85 +455,40 @@ pub fn start_conversion(
                         queue.pop_front()
                     };
 
-                    let Some((task, output_path)) = task else {
+                    let Some((task, output_path, position)) = task else {
                         break; // Queue is empty
                     };
 
                     let _ = sender.send(ConversionMessage::FileStarted {
                         index: task.index,
+                        position,
                         name: task.filename.clone(),
                     });
 
-                    let result = if let Some(parent) = output_path.parent() {
-                        if let Err(e) = std::fs::create_dir_all(parent) {
-                            Err(format!(
-                                "Failed to prepare output directory '{}': {e}",
-                                parent.display()
-                            ))
-                        } else {
-                            match format.category {
-                                FormatCategory::Image => {
-                                    // Check if we can use native image crate
-                                    let input_ext = task
-                                        .path
-                                        .extension()
-                                        .and_then(|e| e.to_str())
-                                        .unwrap_or("");
-                                    if image_conv::can_handle_natively(input_ext, format.extension)
-                                    {
-                                        image_conv::convert_image(
-                                            &task.path,
-                                            &output_path,
-                                            config.image_quality,
-                                            None,
-                                        )
-                                    } else {
-                                        // Fall back to FFmpeg for exotic image formats
-                                        run_ffmpeg_conversion(
-                                            task.index,
-                                            &task.path,
-                                            &output_path,
-                                            &format,
-                                            &config,
-                                            &task.metadata,
-                                            &sender,
-                                            &cancel_flag,
-                                        )
-                                    }
-                                }
-                                FormatCategory::Video | FormatCategory::Audio => {
-                                    run_ffmpeg_conversion(
-                                        task.index,
-                                        &task.path,
-                                        &output_path,
-                                        &format,
-                                        &config,
-                                        &task.metadata,
-                                        &sender,
-                                        &cancel_flag,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Err("Failed to resolve output directory".to_string())
-                    };
+                    let result =
+                        convert_task(&task, &output_path, &format, &config, &sender, &cancel_flag);
 
-                    let success = result.is_ok();
-                    if success {
-                        succeeded.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    } else {
-                        failed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    }
+                    let outcome = match result {
+                        Ok(()) => {
+                            succeeded.fetch_add(1, Ordering::SeqCst);
+                            ConversionOutcome::Succeeded
+                        }
+                        Err(JobFailure::Failed(error)) => {
+                            failed.fetch_add(1, Ordering::SeqCst);
+                            ConversionOutcome::Failed(error)
+                        }
+                        Err(JobFailure::Cancelled) => {
+                            cancelled.fetch_add(1, Ordering::SeqCst);
+                            ConversionOutcome::Cancelled
+                        }
+                    };
 
                     let _ = sender.send(ConversionMessage::FileDone {
                         index: task.index,
-                        success,
-                        error: result.err(),
+                        outcome,
                     });
 
-                    let completed =
-                        completed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
 
                     // Update overall progress
                     let overall_pct = (completed as f64 / total as f64) * 100.0;
@@ -403,13 +511,97 @@ pub fn start_conversion(
             let _ = worker.join();
         }
 
-        let succ_final = succeeded.load(std::sync::atomic::Ordering::SeqCst);
-        let fail_final = failed.load(std::sync::atomic::Ordering::SeqCst);
+        // Workers stop before dequeuing more work once cancellation is requested.
+        // Report every remaining item explicitly so the UI never leaves stale
+        // "Pending" rows or inconsistent totals.
+        let remaining = {
+            let mut queue = tasks_queue.lock();
+            queue.drain(..).collect::<Vec<_>>()
+        };
+        for (task, _, _) in remaining {
+            cancelled.fetch_add(1, Ordering::SeqCst);
+            let _ = sender.send(ConversionMessage::FileDone {
+                index: task.index,
+                outcome: ConversionOutcome::Cancelled,
+            });
+        }
+
+        let succ_final = succeeded.load(Ordering::SeqCst);
+        let fail_final = failed.load(Ordering::SeqCst);
+        let cancelled_final = cancelled.load(Ordering::SeqCst);
         let _ = sender.send(ConversionMessage::AllDone {
             succeeded: succ_final,
             failed: fail_final,
+            cancelled: cancelled_final,
         });
     });
+}
+
+fn convert_task(
+    task: &JobTask,
+    output_path: &Path,
+    format: &OutputFormat,
+    config: &MediaForgeConfig,
+    sender: &Sender<ConversionMessage>,
+    cancel_flag: &Arc<Mutex<bool>>,
+) -> Result<(), JobFailure> {
+    if *cancel_flag.lock() {
+        return Err(JobFailure::Cancelled);
+    }
+
+    let parent = output_path
+        .parent()
+        .ok_or_else(|| JobFailure::Failed("Failed to resolve output directory".to_string()))?;
+    fs::create_dir_all(parent).map_err(|error| {
+        JobFailure::Failed(format!(
+            "Failed to prepare output directory '{}': {error}",
+            parent.display()
+        ))
+    })?;
+
+    let staged = StagedOutput::beside(output_path).map_err(JobFailure::Failed)?;
+    let conversion = match format.category {
+        FormatCategory::Image => {
+            let input_ext = task
+                .path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .unwrap_or("");
+            if image_conv::can_handle_natively(input_ext, format.extension) {
+                image_conv::convert_image(&task.path, &staged.path, config.image_quality, None)
+                    .map_err(JobFailure::Failed)
+            } else {
+                run_ffmpeg_conversion(
+                    task.index,
+                    &task.path,
+                    &staged.path,
+                    format,
+                    config,
+                    &task.metadata,
+                    sender,
+                    cancel_flag,
+                )
+            }
+        }
+        FormatCategory::Video | FormatCategory::Audio => run_ffmpeg_conversion(
+            task.index,
+            &task.path,
+            &staged.path,
+            format,
+            config,
+            &task.metadata,
+            sender,
+            cancel_flag,
+        ),
+    };
+
+    conversion?;
+    if *cancel_flag.lock() {
+        return Err(JobFailure::Cancelled);
+    }
+    staged
+        .commit(output_path, config.overwrite_existing)
+        .map_err(JobFailure::Failed)
 }
 
 /// Max stderr lines to keep in memory during a single file conversion
@@ -425,7 +617,7 @@ fn run_ffmpeg_conversion(
     input_meta: &metadata::MediaMetadata,
     sender: &Sender<ConversionMessage>,
     cancel_flag: &Arc<Mutex<bool>>,
-) -> Result<(), String> {
+) -> Result<(), JobFailure> {
     let file_start = Instant::now();
     let ffmpeg_path = config.ffmpeg_path();
 
@@ -453,7 +645,11 @@ fn run_ffmpeg_conversion(
         .stderr(Stdio::piped())
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .spawn()
-        .map_err(|e| format!("Failed to launch conversion engine: {e}. Please ensure the application has permissions to run from the temporary directory."))?;
+        .map_err(|error| {
+            JobFailure::Failed(format!(
+                "Failed to launch conversion engine: {error}. Please ensure the application has permissions to run from the temporary directory."
+            ))
+        })?;
 
     // Reuse already cached metadata when available to reduce conversion startup latency.
     let mut total_duration_us = input_meta
@@ -507,7 +703,8 @@ fn run_ffmpeg_conversion(
             if *cancel_flag.lock() {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err("Cancelled".to_string());
+                let _ = stderr_thread.join();
+                return Err(JobFailure::Cancelled);
             }
 
             match reader.read_line(&mut line_buf) {
@@ -564,37 +761,23 @@ fn run_ffmpeg_conversion(
 
     let status = child
         .wait()
-        .map_err(|e| format!("FFmpeg process error: {e}"))?;
+        .map_err(|error| JobFailure::Failed(format!("FFmpeg process error: {error}")))?;
 
     if status.success() {
         Ok(())
     } else {
-        // Extract a meaningful error from stderr
-        let error_lines: Vec<&str> = stderr_output
-            .lines()
-            .filter(|l| {
-                let l_lower = l.to_lowercase();
-                l_lower.contains("error")
-                    || l_lower.contains("invalid")
-                    || l_lower.contains("failed")
-            })
-            .collect();
-
-        let error_msg = if error_lines.is_empty() {
-            format!("FFmpeg exited with code {}", status.code().unwrap_or(-1))
-        } else {
-            error_lines.last().unwrap_or(&"Unknown error").to_string()
-        };
+        let error_msg = extract_ffmpeg_error(&stderr_output, status.code());
 
         // Fallback to software encoding if HW acceleration was requested and failed
         let is_hw = config.hw_accel != crate::config::HwAccel::Software;
-        let is_hw_error = error_msg.to_lowercase().contains("nvenc")
-            || error_msg.to_lowercase().contains("cuda")
-            || error_msg.to_lowercase().contains("qsv")
-            || error_msg.to_lowercase().contains("amf")
-            || error_msg.to_lowercase().contains("hardware")
-            || error_msg.to_lowercase().contains("driver")
-            || error_msg.to_lowercase().contains("init_failed");
+        let stderr_lower = stderr_output.to_lowercase();
+        let is_hw_error = stderr_lower.contains("nvenc")
+            || stderr_lower.contains("cuda")
+            || stderr_lower.contains("qsv")
+            || stderr_lower.contains("amf")
+            || stderr_lower.contains("hardware")
+            || stderr_lower.contains("driver")
+            || stderr_lower.contains("init_failed");
 
         if is_hw && is_hw_error {
             let _ = sender.send(ConversionMessage::Log(
@@ -614,8 +797,38 @@ fn run_ffmpeg_conversion(
             );
         }
 
-        Err(error_msg)
+        Err(JobFailure::Failed(error_msg))
     }
+}
+
+fn extract_ffmpeg_error(stderr: &str, exit_code: Option<i32>) -> String {
+    stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .enumerate()
+        .max_by_key(|(position, line)| {
+            let lower = line.to_lowercase();
+            let relevance = if lower.contains("not supported")
+                || lower.contains("unsupported")
+                || lower.contains("no such file")
+                || lower.contains("permission denied")
+                || lower.contains("unknown encoder")
+                || lower.contains("could not open")
+            {
+                3
+            } else if lower.contains("invalid")
+                || lower.contains("error")
+                || lower.contains("failed")
+            {
+                2
+            } else {
+                1
+            };
+            (relevance, *position)
+        })
+        .map(|(_, line)| line.to_string())
+        .unwrap_or_else(|| format!("FFmpeg exited with code {}", exit_code.unwrap_or(-1)))
 }
 
 #[cfg(test)]
@@ -696,7 +909,7 @@ mod tests {
             &format,
             false,
             "converted",
-            false,
+            true,
             false,
             &mut reserved,
         );
@@ -707,12 +920,286 @@ mod tests {
             &format,
             false,
             "converted",
-            false,
+            true,
             false,
             &mut reserved,
         );
 
         assert_eq!(first, output_dir.join("track.mp3"));
         assert_eq!(second, output_dir.join("track(2).mp3"));
+    }
+
+    #[test]
+    fn test_output_never_reuses_the_input_path() {
+        let input = Path::new("files").join("video.mp4");
+        let format = OutputFormat {
+            label: "MP4 (H.264)",
+            extension: "mp4",
+            category: FormatCategory::Video,
+        };
+
+        let output =
+            build_output_path(&input, None, None, &format, false, "converted", true, false);
+
+        assert_eq!(output, Path::new("files").join("video(2).mp4"));
+    }
+
+    #[test]
+    fn aggregate_progress_does_not_move_backwards_between_workers() {
+        let mut progress = ConversionProgress {
+            total_files: 2,
+            ..Default::default()
+        };
+        progress.update_file_progress(0, 80.0);
+        assert_eq!(progress.overall_pct, 40.0);
+        progress.update_file_progress(1, 20.0);
+        assert_eq!(progress.overall_pct, 50.0);
+        progress.update_file_progress(0, 100.0);
+        assert_eq!(progress.overall_pct, 60.0);
+    }
+
+    #[test]
+    fn ffmpeg_error_extraction_prefers_actionable_diagnostics() {
+        let stderr = "Error while opening encoder\nSpecified sample rate 44100 is not supported\nNothing was written into output file\n";
+        assert_eq!(
+            extract_ffmpeg_error(stderr, Some(1)),
+            "Specified sample rate 44100 is not supported"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    mod end_to_end {
+        use super::*;
+        use crate::config::{HwAccel, MediaForgeConfig};
+        use crate::media::metadata::MediaMetadata;
+        use crate::platform::CommandExt;
+        use std::process::Command;
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+        struct TestDir(PathBuf);
+
+        impl TestDir {
+            fn new(name: &str) -> Self {
+                let nonce = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("clock must be after epoch")
+                    .as_nanos();
+                let path = std::env::temp_dir().join(format!(
+                    "mediaforge-test-{name}-{}-{nonce}",
+                    std::process::id()
+                ));
+                fs::create_dir_all(&path).expect("test directory must be creatable");
+                Self(path)
+            }
+        }
+
+        impl Drop for TestDir {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        fn bundled_ffmpeg() -> PathBuf {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("bin")
+                .join("ffmpeg.exe")
+        }
+
+        fn generate_fixture(path: &Path) {
+            let status = Command::new(bundled_ffmpeg())
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=96x64:rate=15",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "sine=frequency=440:sample_rate=44100",
+                    "-t",
+                    "0.5",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:a",
+                    "aac",
+                    "-y",
+                ])
+                .arg(path)
+                .creation_flags(0x08000000)
+                .status()
+                .expect("fixture FFmpeg must launch");
+            assert!(status.success(), "fixture generation failed");
+        }
+
+        fn task(path: PathBuf) -> JobTask {
+            JobTask {
+                index: 0,
+                filename: path
+                    .file_name()
+                    .expect("fixture has a file name")
+                    .to_string_lossy()
+                    .into_owned(),
+                path,
+                metadata: MediaMetadata::default(),
+                relative_path: None,
+            }
+        }
+
+        fn config(output_dir: &Path, overwrite: bool) -> MediaForgeConfig {
+            MediaForgeConfig {
+                add_suffix: false,
+                overwrite_existing: overwrite,
+                custom_output_dir: Some(output_dir.to_path_buf()),
+                max_concurrent_conversions: 1,
+                hw_accel: HwAccel::Software,
+                show_notification: false,
+                ..Default::default()
+            }
+        }
+
+        fn run_job(
+            input: PathBuf,
+            output_dir: &Path,
+            overwrite: bool,
+            cancelled_at_start: bool,
+        ) -> (usize, usize, usize) {
+            let (sender, receiver) = crossbeam_channel::unbounded();
+            let cancel_flag = Arc::new(Mutex::new(cancelled_at_start));
+            let format = OutputFormat {
+                label: "MPEG",
+                extension: "mpeg",
+                category: FormatCategory::Video,
+            };
+            start_conversion(
+                vec![task(input)],
+                format,
+                config(output_dir, overwrite),
+                Some(output_dir.to_path_buf()),
+                sender,
+                cancel_flag,
+            );
+
+            loop {
+                if let ConversionMessage::AllDone {
+                    succeeded,
+                    failed,
+                    cancelled,
+                } = receiver
+                    .recv_timeout(Duration::from_secs(30))
+                    .expect("conversion must finish within timeout")
+                {
+                    return (succeeded, failed, cancelled);
+                }
+            }
+        }
+
+        fn assert_no_staging_files(dir: &Path) {
+            let leftovers = fs::read_dir(dir)
+                .expect("output directory must be readable")
+                .flatten()
+                .filter(|entry| entry.file_name().to_string_lossy().contains("mediaforge-"))
+                .collect::<Vec<_>>();
+            assert!(leftovers.is_empty(), "staging files were not cleaned up");
+        }
+
+        #[test]
+        fn every_advertised_ffmpeg_format_converts_a_real_fixture() {
+            let dir = TestDir::new("format-matrix");
+            let input = dir.0.join("source.mp4");
+            generate_fixture(&input);
+            let config = MediaForgeConfig {
+                hw_accel: HwAccel::Software,
+                ..Default::default()
+            };
+
+            for (position, format) in crate::converter::ffmpeg::video_output_formats()
+                .iter()
+                .chain(crate::converter::ffmpeg::audio_output_formats())
+                .enumerate()
+            {
+                let output = dir
+                    .0
+                    .join(format!("{position}-output.{}", format.extension));
+                let args = match format.category {
+                    FormatCategory::Video => crate::converter::ffmpeg::build_video_args(
+                        &input,
+                        &output,
+                        format.label,
+                        &config,
+                    ),
+                    FormatCategory::Audio => crate::converter::ffmpeg::build_audio_args(
+                        &input,
+                        &output,
+                        format.label,
+                        &config,
+                    ),
+                    FormatCategory::Image => unreachable!("format matrix excludes images"),
+                };
+                let process = Command::new(bundled_ffmpeg())
+                    .args(args)
+                    .stdout(Stdio::null())
+                    .creation_flags(0x08000000)
+                    .output()
+                    .expect("format conversion must launch");
+                assert!(
+                    process.status.success(),
+                    "{} conversion failed: {}",
+                    format.label,
+                    String::from_utf8_lossy(&process.stderr)
+                );
+                assert!(
+                    output.metadata().expect("format output must exist").len() > 0,
+                    "{} output was empty",
+                    format.label
+                );
+            }
+        }
+
+        #[test]
+        fn mpeg_conversion_succeeds_with_real_ffmpeg() {
+            let dir = TestDir::new("mpeg-success");
+            let input = dir.0.join("source.mp4");
+            let output_dir = dir.0.join("output");
+            generate_fixture(&input);
+
+            assert_eq!(run_job(input, &output_dir, false, false), (1, 0, 0));
+            let output = output_dir.join("source.mpeg");
+            assert!(output.metadata().expect("output must exist").len() > 0);
+            assert_no_staging_files(&output_dir);
+        }
+
+        #[test]
+        fn failed_conversion_preserves_existing_output_and_cleans_staging() {
+            let dir = TestDir::new("failure-cleanup");
+            let input = dir.0.join("broken.mp4");
+            let output_dir = dir.0.join("output");
+            fs::create_dir_all(&output_dir).expect("output directory must be creatable");
+            fs::write(&input, b"not media").expect("invalid fixture must be writable");
+            let output = output_dir.join("broken.mpeg");
+            fs::write(&output, b"original output").expect("existing output must be writable");
+
+            assert_eq!(run_job(input, &output_dir, true, false), (0, 1, 0));
+            assert_eq!(
+                fs::read(&output).expect("existing output must remain readable"),
+                b"original output"
+            );
+            assert_no_staging_files(&output_dir);
+        }
+
+        #[test]
+        fn cancellation_reports_every_queued_file_without_creating_output() {
+            let dir = TestDir::new("cancelled");
+            let input = dir.0.join("source.mp4");
+            let output_dir = dir.0.join("output");
+            generate_fixture(&input);
+
+            assert_eq!(run_job(input, &output_dir, false, true), (0, 0, 1));
+            assert!(!output_dir.join("source.mpeg").exists());
+        }
     }
 }

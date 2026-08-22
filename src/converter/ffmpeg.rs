@@ -212,6 +212,9 @@ pub fn build_video_args(
     let video_codec = match format_label {
         "MP4 (H.265)" => "libx265",
         "WebM (VP9)" => "libvpx-vp9",
+        "AVI" => "mpeg4",
+        "WMV" => "wmv2",
+        "MPEG" => "mpeg2video",
         "GIF" => {
             // Video to GIF special handling
             args.extend([
@@ -229,8 +232,17 @@ pub fn build_video_args(
 
     args.extend(["-c:v".to_string(), video_codec.to_string()]);
 
-    // CRF
-    args.extend(["-crf".to_string(), config.video_crf.to_string()]);
+    // Quality controls vary by codec family. CRF is not accepted consistently by
+    // legacy container codecs, so map the same UI quality range to qscale there.
+    if matches!(video_codec, "libx264" | "libx265" | "libvpx-vp9") {
+        if video_codec == "libvpx-vp9" {
+            args.extend(["-b:v".to_string(), "0".to_string()]);
+        }
+        args.extend(["-crf".to_string(), config.video_crf.to_string()]);
+    } else {
+        let qscale = 2 + (u32::from(config.video_crf) * 29 / 51);
+        args.extend(["-q:v".to_string(), qscale.to_string()]);
+    }
 
     // Preset (only for x264/x265)
     if video_codec == "libx264" || video_codec == "libx265" {
@@ -248,6 +260,9 @@ pub fn build_video_args(
     // Audio codec
     let audio_codec = match format_label {
         "WebM (VP9)" | "OGV" => "libvorbis",
+        "AVI" => "libmp3lame",
+        "WMV" => "wmav2",
+        "MPEG" => "mp2",
         _ => "aac",
     };
     args.extend([
@@ -326,8 +341,14 @@ pub fn build_audio_args(
         args.extend(["-b:a".to_string(), format!("{}k", config.audio_bitrate)]);
     }
 
-    // Sample rate
-    args.extend(["-ar".to_string(), config.audio_sample_rate.to_string()]);
+    // Opus supports a defined set of rates and the UI's common 44.1 kHz default
+    // is not one of them. Encode Opus at its native 48 kHz clock rate.
+    let sample_rate = if format_label == "OPUS" {
+        48_000
+    } else {
+        config.audio_sample_rate
+    };
+    args.extend(["-ar".to_string(), sample_rate.to_string()]);
 
     // Channels
     if let Some(ch) = config.audio_channels.channel_count() {
@@ -354,4 +375,71 @@ pub fn get_ffmpeg_version(ffmpeg_path: &str) -> Option<String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     stdout.lines().next().map(|l| l.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_codec_pair(label: &str, video_codec: &str, audio_codec: &str) {
+        let config = MediaForgeConfig {
+            hw_accel: HwAccel::Software,
+            ..Default::default()
+        };
+        let args = build_video_args(
+            Path::new("input.mp4"),
+            Path::new("output.tmp"),
+            label,
+            &config,
+        );
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "-c:v" && pair[1] == video_codec));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "-c:a" && pair[1] == audio_codec));
+    }
+
+    #[test]
+    fn container_specific_codecs_are_compatible() {
+        assert_codec_pair("AVI", "mpeg4", "libmp3lame");
+        assert_codec_pair("WMV", "wmv2", "wmav2");
+        assert_codec_pair("MPEG", "mpeg2video", "mp2");
+        assert_codec_pair("OGV", "libtheora", "libvorbis");
+    }
+
+    #[test]
+    fn vp9_uses_constant_quality_mode() {
+        let config = MediaForgeConfig {
+            hw_accel: HwAccel::Software,
+            ..Default::default()
+        };
+        let args = build_video_args(
+            Path::new("input.mp4"),
+            Path::new("output.webm"),
+            "WebM (VP9)",
+            &config,
+        );
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "-b:v" && pair[1] == "0"));
+        assert!(args.windows(2).any(|pair| pair[0] == "-crf"));
+    }
+
+    #[test]
+    fn opus_uses_a_supported_sample_rate() {
+        let config = MediaForgeConfig {
+            audio_sample_rate: 44_100,
+            ..Default::default()
+        };
+        let args = build_audio_args(
+            Path::new("input.wav"),
+            Path::new("output.opus"),
+            "OPUS",
+            &config,
+        );
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "-ar" && pair[1] == "48000"));
+    }
 }

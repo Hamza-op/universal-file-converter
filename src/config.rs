@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MediaForgeConfig {
     pub theme: Theme,
     pub default_suffix: String,
@@ -77,7 +78,21 @@ impl MediaForgeConfig {
 
     fn load_from(path: &Path) -> Option<Self> {
         let content = std::fs::read_to_string(path).ok()?;
-        toml::from_str(&content).ok()
+        toml::from_str::<Self>(&content).ok().map(Self::sanitized)
+    }
+
+    fn sanitized(mut self) -> Self {
+        if self.default_suffix.trim().is_empty() {
+            self.default_suffix = "converted".to_string();
+        }
+        self.max_concurrent_conversions = self.max_concurrent_conversions.clamp(1, 32);
+        self.ffmpeg_threads = self.ffmpeg_threads.map(|threads| threads.min(64));
+        self.max_folder_scan_depth = self.max_folder_scan_depth.min(100);
+        self.image_quality = self.image_quality.clamp(1, 100);
+        self.video_crf = self.video_crf.min(51);
+        self.audio_bitrate = self.audio_bitrate.clamp(32, 512);
+        self.audio_sample_rate = self.audio_sample_rate.clamp(8_000, 192_000);
+        self
     }
 
     pub fn save(&self) {
@@ -303,4 +318,46 @@ fn num_cpus() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partial_legacy_config_uses_defaults_for_missing_fields() {
+        let config: MediaForgeConfig =
+            toml::from_str("add_suffix = false\nvideo_crf = 18").expect("config must parse");
+        assert!(!config.add_suffix);
+        assert_eq!(config.video_crf, 18);
+        assert_eq!(
+            config.image_quality,
+            MediaForgeConfig::default().image_quality
+        );
+    }
+
+    #[test]
+    fn loaded_values_are_sanitized_to_operational_ranges() {
+        let config = MediaForgeConfig {
+            default_suffix: "   ".to_string(),
+            max_concurrent_conversions: 0,
+            ffmpeg_threads: Some(999),
+            max_folder_scan_depth: usize::MAX,
+            image_quality: 0,
+            video_crf: u8::MAX,
+            audio_bitrate: 1,
+            audio_sample_rate: 999_999,
+            ..Default::default()
+        }
+        .sanitized();
+
+        assert_eq!(config.default_suffix, "converted");
+        assert_eq!(config.max_concurrent_conversions, 1);
+        assert_eq!(config.ffmpeg_threads, Some(64));
+        assert_eq!(config.max_folder_scan_depth, 100);
+        assert_eq!(config.image_quality, 1);
+        assert_eq!(config.video_crf, 51);
+        assert_eq!(config.audio_bitrate, 32);
+        assert_eq!(config.audio_sample_rate, 192_000);
+    }
 }
