@@ -24,14 +24,16 @@ pub fn show(app: &mut MediaForgeApp, ctx: &egui::Context) {
                                 .clicked()
                             {
                                 app.config.theme = Theme::Dark;
-                                ctx.set_visuals(theme::dark_theme());
+                                ctx.set_theme(egui::Theme::Dark);
+                                ctx.set_visuals_of(egui::Theme::Dark, theme::dark_theme());
                             }
                             if ui
                                 .selectable_label(app.config.theme == Theme::Light, "Light")
                                 .clicked()
                             {
                                 app.config.theme = Theme::Light;
-                                ctx.set_visuals(theme::light_theme());
+                                ctx.set_theme(egui::Theme::Light);
+                                ctx.set_visuals_of(egui::Theme::Light, theme::light_theme());
                             }
                         });
 

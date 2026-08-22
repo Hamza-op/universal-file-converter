@@ -1,10 +1,13 @@
+#[cfg(not(target_os = "windows"))]
+fn main() {}
+
+#[cfg(target_os = "windows")]
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
-        let package_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
-        let windows_version = format!("{package_version}.0");
-        let mut res = winresource::WindowsResource::new();
-        let manifest = format!(
-            r#"
+    let package_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+    let windows_version = format!("{package_version}.0");
+    let mut res = winresource::WindowsResource::new();
+    let manifest = format!(
+        r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
     version="{windows_version}"
@@ -21,15 +24,14 @@ fn main() {
   <description>MediaForge — All-in-One Media Converter</description>
 </assembly>
 "#,
-        );
-        res.set_manifest(&manifest);
-        res.set("FileDescription", "MediaForge — All-in-One Media Converter");
-        res.set("ProductName", "MediaForge");
-        res.set("FileVersion", &windows_version);
-        res.set("ProductVersion", &windows_version);
-        res.set("LegalCopyright", "MediaForge © 2026");
-        if let Err(e) = res.compile() {
-            eprintln!("Warning: Failed to compile Windows resource: {e}");
-        }
+    );
+    res.set_manifest(&manifest);
+    res.set("FileDescription", "MediaForge — All-in-One Media Converter");
+    res.set("ProductName", "MediaForge");
+    res.set("FileVersion", &windows_version);
+    res.set("ProductVersion", &windows_version);
+    res.set("LegalCopyright", "MediaForge © 2026");
+    if let Err(e) = res.compile() {
+        eprintln!("Warning: Failed to compile Windows resource: {e}");
     }
 }

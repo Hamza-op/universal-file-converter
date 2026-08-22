@@ -18,7 +18,9 @@
 - **Image conversion** — PNG, JPG, WebP, BMP, TIFF, GIF, ICO, AVIF
 - **Drag & drop** — drop files or folders directly onto the window
 - **Batch conversion** — convert hundreds of files at once with real-time progress
-- **Hardware acceleration** — NVIDIA NVENC, Intel QSV, AMD AMF auto-detection
+- **Hardware acceleration** — NVIDIA NVENC, Intel QSV, AMD AMF selection with software fallback
+- **Safe output commits** — failed or cancelled conversions never replace a valid destination
+- **Accurate cancellation** — queued and active files are reported separately from failures
 - **Quality controls** — CRF, preset, resolution, bitrate, sample rate, channels
 - **Windows context menu** — right-click → "Convert with MediaForge" on any media file
 - **Single instance** — launching from context menu sends files to the running window
@@ -133,6 +135,15 @@ Settings are stored in `mediaforge.toml` next to the exe (portable) or in `%APPD
 | `audio_bitrate` | `192` | Audio bitrate in kbps |
 | `show_notification` | `true` | Desktop notification on completion |
 
+When **Overwrite** is disabled, MediaForge selects a numbered filename instead of replacing an existing file. When it is enabled, a completed conversion safely replaces the destination while preserving the old file if conversion or finalization fails. MediaForge never writes an output over its own input file.
+
+## Privacy and Security
+
+- Media files are processed locally. MediaForge does not upload media, metadata, logs, or settings.
+- Windows builds verify the embedded FFmpeg tools byte-for-byte when extracting them to the selected temporary directory. macOS and Linux builds use `ffmpeg` and `ffprobe` from the local `PATH`.
+- Conversion logs stay in application memory and are not transmitted. Desktop notifications are delivered through the operating system when enabled.
+- Release downloads include a `.sha256` file so the executable can be verified before running.
+
 ## Tech Stack
 
 | Component | Crate |
@@ -150,7 +161,7 @@ Settings are stored in `mediaforge.toml` next to the exe (portable) or in `%APPD
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+MediaForge source code is licensed under the [MIT License](LICENSE). The bundled Windows FFmpeg/FFprobe executables are distributed under GPLv3; see [Third-Party Notices](THIRD_PARTY_NOTICES.md) for provenance, source, license, and hashes.
 
 ---
 

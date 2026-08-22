@@ -109,6 +109,8 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
 
                 let (status_text, status_color) = if app.progress.is_running {
                     ("Working", theme::ACCENT_WARM)
+                } else if app.progress.cancelled > 0 {
+                    ("Stopped", theme::ACCENT_WARM)
                 } else if app.progress.is_complete {
                     ("Complete", theme::SUCCESS)
                 } else {
@@ -161,10 +163,17 @@ fn show_header(app: &mut MediaForgeApp, ui: &mut Ui) {
                     )
                 }
             } else {
-                format!(
-                    "Complete \u{2022} {} done, {} failed",
-                    app.progress.succeeded, app.progress.failed
-                )
+                if app.progress.cancelled > 0 {
+                    format!(
+                        "Stopped \u{2022} {} done, {} failed, {} cancelled",
+                        app.progress.succeeded, app.progress.failed, app.progress.cancelled
+                    )
+                } else {
+                    format!(
+                        "Complete \u{2022} {} done, {} failed",
+                        app.progress.succeeded, app.progress.failed
+                    )
+                }
             };
             widgets::smooth_progress(
                 ui,
@@ -272,7 +281,7 @@ fn show_output_panel(app: &mut MediaForgeApp, ui: &mut Ui, formats: &[OutputForm
                 ui.add_space(3.0);
 
                 if let Some(format) = &app.selected_format {
-                    show_quality_settings(ui, &format.category, &mut app.config);
+                    show_quality_settings(ui, format, &mut app.config);
                 }
 
                 if app.progress.is_running {
@@ -355,6 +364,13 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                 Color32::from_rgb(252, 226, 228)
             }
         }
+        FileStatus::Cancelled => {
+            if dark_mode {
+                Color32::from_rgb(46, 40, 28)
+            } else {
+                Color32::from_rgb(250, 242, 220)
+            }
+        }
         FileStatus::Pending => theme::soft_fill(dark_mode),
     };
 
@@ -376,6 +392,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                     let name_color = match &file.status {
                         FileStatus::Done => theme::SUCCESS,
                         FileStatus::Failed(_) => theme::ERROR,
+                        FileStatus::Cancelled => theme::ACCENT_WARM,
                         FileStatus::Converting => theme::ACCENT_HI,
                         FileStatus::Pending => theme::text_primary(dark_mode),
                     };
@@ -396,6 +413,10 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                             .size(10.0)
                             .color(theme::text_secondary(dark_mode)),
                     );
+                    if let FileStatus::Failed(error) = &file.status {
+                        ui.label(RichText::new(error).size(10.0).color(theme::ERROR))
+                            .on_hover_text(error);
+                    }
                 });
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -416,6 +437,7 @@ fn queue_row(ui: &mut Ui, file: &mut InputFile, remove_idx: &mut Option<usize>, 
                         FileStatus::Converting => ("Working", theme::ACCENT_HI),
                         FileStatus::Done => ("Done", theme::SUCCESS),
                         FileStatus::Failed(_) => ("Failed", theme::ERROR),
+                        FileStatus::Cancelled => ("Cancelled", theme::ACCENT_WARM),
                     };
                     pill(ui, label, color, color_with_alpha(color, 24));
                 });
@@ -451,10 +473,10 @@ fn output_settings(app: &mut MediaForgeApp, ui: &mut Ui) {
     });
 }
 
-fn show_quality_settings(ui: &mut Ui, category: &FormatCategory, config: &mut MediaForgeConfig) {
+fn show_quality_settings(ui: &mut Ui, format: &OutputFormat, config: &mut MediaForgeConfig) {
     subtle_panel(ui, |ui| {
         ui.label(RichText::new("Quality").size(11.0).strong());
-        match category {
+        match format.category {
             FormatCategory::Image => {
                 ui.add(egui::Slider::new(&mut config.image_quality, 1..=100).text("Quality"));
             }
@@ -491,17 +513,21 @@ fn show_quality_settings(ui: &mut Ui, category: &FormatCategory, config: &mut Me
                 ui.horizontal_wrapped(|ui| {
                     ui.add(egui::Slider::new(&mut config.audio_bitrate, 64..=320).text("Bitrate"));
                     ui.label("Sample");
-                    egui::ComboBox::from_id_salt("sr")
-                        .selected_text(format!("{} Hz", config.audio_sample_rate))
-                        .show_ui(ui, |ui| {
-                            for rate in &[22050_u32, 44100, 48000, 96000] {
-                                ui.selectable_value(
-                                    &mut config.audio_sample_rate,
-                                    *rate,
-                                    format!("{rate} Hz"),
-                                );
-                            }
-                        });
+                    if format.label == "OPUS" {
+                        ui.label(RichText::new("48000 Hz (Opus)").color(theme::TEXT_DIM));
+                    } else {
+                        egui::ComboBox::from_id_salt("sr")
+                            .selected_text(format!("{} Hz", config.audio_sample_rate))
+                            .show_ui(ui, |ui| {
+                                for rate in &[22050_u32, 44100, 48000, 96000] {
+                                    ui.selectable_value(
+                                        &mut config.audio_sample_rate,
+                                        *rate,
+                                        format!("{rate} Hz"),
+                                    );
+                                }
+                            });
+                    }
                     ui.label("Channels");
                     egui::ComboBox::from_id_salt("channels")
                         .selected_text(config.audio_channels.label())
@@ -631,7 +657,7 @@ fn show_progress_hint(ui: &mut Ui, app: &mut MediaForgeApp) {
                 RichText::new(format!(
                     "Processing {} \u{2022} {}/{} (overall bar in header)",
                     app.progress.current_file_name,
-                    app.progress.current_file_index.saturating_add(1),
+                    app.progress.current_file_position,
                     app.progress.total_files
                 ))
                 .size(11.0)
@@ -668,6 +694,14 @@ fn show_complete(ui: &mut Ui, app: &mut MediaForgeApp) {
                 theme::ERROR,
                 color_with_alpha(theme::ERROR, 24),
             );
+            if app.progress.cancelled > 0 {
+                pill(
+                    ui,
+                    &format!("{} cancelled", app.progress.cancelled),
+                    theme::ACCENT_WARM,
+                    color_with_alpha(theme::ACCENT_WARM, 24),
+                );
+            }
         });
         if widgets::outline_button(ui, "Open Folder").clicked() {
             if let Some(dir) = &app.custom_output_dir {

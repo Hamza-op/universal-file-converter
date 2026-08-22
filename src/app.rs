@@ -7,7 +7,9 @@ use parking_lot::Mutex;
 
 use crate::config::{MediaForgeConfig, Theme};
 use crate::converter::ffmpeg::{self, OutputFormat};
-use crate::converter::job::{self, ConversionMessage, ConversionProgress, FileStatus, InputFile};
+use crate::converter::job::{
+    self, ConversionMessage, ConversionOutcome, ConversionProgress, FileStatus, InputFile,
+};
 use crate::media::detect::{self, MediaType};
 use crate::media::metadata;
 use crate::ui::{main_view, settings, theme};
@@ -160,8 +162,13 @@ impl MediaForgeApp {
                     self.progress.is_running = true;
                     self.progress.is_complete = false;
                 }
-                ConversionMessage::FileStarted { index, name } => {
+                ConversionMessage::FileStarted {
+                    index,
+                    position,
+                    name,
+                } => {
                     self.progress.current_file_index = index;
+                    self.progress.current_file_position = position;
                     self.progress.current_file_name = name;
                     self.progress.current_file_pct = 0.0;
 
@@ -182,58 +189,52 @@ impl MediaForgeApp {
                     self.progress.current_file_pct = pct;
                     self.progress.speed_str = speed;
                     self.progress.eta_secs = eta;
-
-                    let total = self.progress.total_files as f64;
-                    if total > 0.0 {
-                        let completed = (self.progress.succeeded + self.progress.failed) as f64;
-                        self.progress.overall_pct =
-                            ((completed + pct / 100.0) / total * 100.0).clamp(0.0, 100.0);
-                    }
+                    self.progress.update_file_progress(index, pct);
                 }
-                ConversionMessage::FileDone {
-                    index,
-                    success,
-                    error,
-                } => {
+                ConversionMessage::FileDone { index, outcome } => {
                     if let Some(file) = self.files.get_mut(index) {
-                        file.status = if success {
-                            FileStatus::Done
-                        } else {
-                            FileStatus::Failed(error.unwrap_or_else(|| "Unknown error".to_string()))
+                        file.status = match &outcome {
+                            ConversionOutcome::Succeeded => FileStatus::Done,
+                            ConversionOutcome::Failed(error) => FileStatus::Failed(error.clone()),
+                            ConversionOutcome::Cancelled => FileStatus::Cancelled,
                         };
                     }
 
-                    if success {
-                        self.progress.succeeded += 1;
-                    } else {
-                        self.progress.failed += 1;
+                    match outcome {
+                        ConversionOutcome::Succeeded => self.progress.succeeded += 1,
+                        ConversionOutcome::Failed(_) => self.progress.failed += 1,
+                        ConversionOutcome::Cancelled => self.progress.cancelled += 1,
                     }
 
                     self.progress.current_file_pct = 100.0;
+                    self.progress.update_file_progress(index, 100.0);
                 }
-                ConversionMessage::AllDone { succeeded, failed } => {
+                ConversionMessage::AllDone {
+                    succeeded,
+                    failed,
+                    cancelled,
+                } => {
                     self.progress.is_running = false;
                     self.progress.is_complete = true;
                     self.progress.overall_pct = 100.0;
                     self.progress.current_file_pct = 100.0;
                     self.progress.succeeded = succeeded;
                     self.progress.failed = failed;
+                    self.progress.cancelled = cancelled;
 
-                    self.status_message = format!("Done — {succeeded} ok, {failed} failed");
+                    self.status_message = if cancelled > 0 {
+                        format!("Stopped — {succeeded} ok, {failed} failed, {cancelled} cancelled")
+                    } else {
+                        format!("Done — {succeeded} ok, {failed} failed")
+                    };
 
                     if self.config.show_notification {
-                        let mut notification = notify_rust::Notification::new();
-                        notification
-                            .appname("MediaForge")
-                            .summary("Conversion Complete")
-                            .body(&format!("{succeeded} succeeded, {failed} failed."));
-                        if self.config.play_sound_on_complete {
-                            #[cfg(target_os = "windows")]
-                            {
-                                notification.sound_name("Mail");
-                            }
-                        }
-                        let _ = notification.show();
+                        crate::platform::notification::show_completion(
+                            succeeded,
+                            failed,
+                            cancelled,
+                            self.config.play_sound_on_complete,
+                        );
                     }
 
                     self.config.save();
@@ -285,7 +286,7 @@ impl MediaForgeApp {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .map(|file| file.path().to_path_buf())
                 .collect()
         });
 
@@ -395,12 +396,18 @@ impl MediaForgeApp {
 }
 
 impl eframe::App for MediaForgeApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // One-time setup
         if !self.fonts_configured {
             match self.config.theme {
-                Theme::Dark => ctx.set_visuals(theme::dark_theme()),
-                Theme::Light => ctx.set_visuals(theme::light_theme()),
+                Theme::Dark => {
+                    ctx.set_theme(egui::Theme::Dark);
+                    ctx.set_visuals_of(egui::Theme::Dark, theme::dark_theme());
+                }
+                Theme::Light => {
+                    ctx.set_theme(egui::Theme::Light);
+                    ctx.set_visuals_of(egui::Theme::Light, theme::light_theme());
+                }
             }
             theme::configure_fonts(ctx);
             self.fonts_configured = true;
@@ -420,21 +427,24 @@ impl eframe::App for MediaForgeApp {
         if self.progress.is_running || self.is_importing {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
+    }
 
-        // Settings window
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         if self.show_settings {
-            settings::show(self, ctx);
+            settings::show(self, &ctx);
         }
 
         // Main layout — tight margins to eliminate edge gaps
-        let panel_fill = ctx.style().visuals.panel_fill;
+        let panel_fill = ui.visuals().panel_fill;
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::default()
                     .fill(panel_fill)
                     .inner_margin(egui::Margin::same(4)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 main_view::show(self, ui);
             });
     }
