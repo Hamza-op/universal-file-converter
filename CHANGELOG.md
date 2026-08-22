@@ -21,6 +21,7 @@ All notable changes to MediaForge are documented here. Versions follow [Semantic
 - Encode OPUS at its required 48 kHz rate instead of failing with the default 44.1 kHz setting.
 - Encode ICO images with the required RGBA payload so generated icons remain readable.
 - Route AVIF input through FFmpeg because the native image backend is encode-only for AVIF in this build.
+- Compile the Windows resource build script only on Windows, unblocking macOS and Linux source builds.
 - Prevent same-named batch entries from sharing a destination even when overwrite mode is enabled.
 - Prevent same-format conversions from selecting the source file as their output.
 - Remove partial staging files after failed and cancelled jobs, preserving an existing destination on failure.
