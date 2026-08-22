@@ -12,6 +12,7 @@ All notable changes to MediaForge are documented here. Versions follow [Semantic
 - Prefer specific unsupported-codec, sample-rate, path, and permission diagnostics over generic FFmpeg exit messages.
 - Exercise every advertised output format plus failure cleanup, overwrite preservation, and queued cancellation with generated fixtures and bundled FFmpeg.
 - Test macOS and Linux targets in CI in addition to the Windows release pipeline.
+- Block pull requests on known RustSec vulnerabilities in the locked dependency graph.
 - Publish bundled FFmpeg provenance, license, source, and hashes with each Windows release.
 
 ### Fixed
@@ -25,6 +26,7 @@ All notable changes to MediaForge are documented here. Versions follow [Semantic
 - Remove partial staging files after failed and cancelled jobs, preserving an existing destination on failure.
 - Verify extracted FFmpeg binaries byte-for-byte instead of trusting file size alone.
 - Preserve partial/older configuration files with defaults and sanitize unsafe out-of-range values on load.
+- Upgrade the GUI, dialog, image, and browser-opening dependency stack and replace the vulnerable XML-based notification backend with platform-native commands.
 
 ## [1.2.0] - 2026-08-20
 

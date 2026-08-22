@@ -149,32 +149,34 @@ pub fn text_secondary(dark_mode: bool) -> Color32 {
 }
 
 pub fn configure_fonts(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        let mut style = (*ctx.style_of(theme)).clone();
 
-    style.text_styles = [
-        (
-            TextStyle::Heading,
-            FontId::new(19.0, FontFamily::Proportional),
-        ),
-        (TextStyle::Body, FontId::new(13.5, FontFamily::Proportional)),
-        (
-            TextStyle::Monospace,
-            FontId::new(11.5, FontFamily::Monospace),
-        ),
-        (
-            TextStyle::Button,
-            FontId::new(13.0, FontFamily::Proportional),
-        ),
-        (
-            TextStyle::Small,
-            FontId::new(11.0, FontFamily::Proportional),
-        ),
-    ]
-    .into();
+        style.text_styles = [
+            (
+                TextStyle::Heading,
+                FontId::new(19.0, FontFamily::Proportional),
+            ),
+            (TextStyle::Body, FontId::new(13.5, FontFamily::Proportional)),
+            (
+                TextStyle::Monospace,
+                FontId::new(11.5, FontFamily::Monospace),
+            ),
+            (
+                TextStyle::Button,
+                FontId::new(13.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Small,
+                FontId::new(11.0, FontFamily::Proportional),
+            ),
+        ]
+        .into();
 
-    style.spacing.item_spacing = egui::vec2(6.0, 5.0);
-    style.spacing.button_padding = egui::vec2(14.0, 7.0);
-    style.spacing.window_margin = egui::Margin::same(14);
+        style.spacing.item_spacing = egui::vec2(6.0, 5.0);
+        style.spacing.button_padding = egui::vec2(14.0, 7.0);
+        style.spacing.window_margin = egui::Margin::same(14);
 
-    ctx.set_style(style);
+        ctx.set_style_of(theme, style);
+    }
 }

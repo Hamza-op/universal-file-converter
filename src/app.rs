@@ -229,24 +229,12 @@ impl MediaForgeApp {
                     };
 
                     if self.config.show_notification {
-                        let mut notification = notify_rust::Notification::new();
-                        notification
-                            .appname("MediaForge")
-                            .summary(if cancelled > 0 {
-                                "Conversion Stopped"
-                            } else {
-                                "Conversion Complete"
-                            })
-                            .body(&format!(
-                                "{succeeded} succeeded, {failed} failed, {cancelled} cancelled."
-                            ));
-                        if self.config.play_sound_on_complete {
-                            #[cfg(target_os = "windows")]
-                            {
-                                notification.sound_name("Mail");
-                            }
-                        }
-                        let _ = notification.show();
+                        crate::platform::notification::show_completion(
+                            succeeded,
+                            failed,
+                            cancelled,
+                            self.config.play_sound_on_complete,
+                        );
                     }
 
                     self.config.save();
@@ -298,7 +286,7 @@ impl MediaForgeApp {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .map(|file| file.path().to_path_buf())
                 .collect()
         });
 
@@ -408,12 +396,18 @@ impl MediaForgeApp {
 }
 
 impl eframe::App for MediaForgeApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // One-time setup
         if !self.fonts_configured {
             match self.config.theme {
-                Theme::Dark => ctx.set_visuals(theme::dark_theme()),
-                Theme::Light => ctx.set_visuals(theme::light_theme()),
+                Theme::Dark => {
+                    ctx.set_theme(egui::Theme::Dark);
+                    ctx.set_visuals_of(egui::Theme::Dark, theme::dark_theme());
+                }
+                Theme::Light => {
+                    ctx.set_theme(egui::Theme::Light);
+                    ctx.set_visuals_of(egui::Theme::Light, theme::light_theme());
+                }
             }
             theme::configure_fonts(ctx);
             self.fonts_configured = true;
@@ -433,21 +427,24 @@ impl eframe::App for MediaForgeApp {
         if self.progress.is_running || self.is_importing {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
         }
+    }
 
-        // Settings window
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         if self.show_settings {
-            settings::show(self, ctx);
+            settings::show(self, &ctx);
         }
 
         // Main layout — tight margins to eliminate edge gaps
-        let panel_fill = ctx.style().visuals.panel_fill;
+        let panel_fill = ui.visuals().panel_fill;
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::default()
                     .fill(panel_fill)
                     .inner_margin(egui::Margin::same(4)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 main_view::show(self, ui);
             });
     }

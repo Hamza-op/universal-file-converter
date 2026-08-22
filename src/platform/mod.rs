@@ -1,4 +1,5 @@
 pub mod context_menu;
+pub mod notification;
 pub mod single_instance;
 
 /// Trait to add creation_flags on Windows Command
