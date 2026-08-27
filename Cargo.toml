@@ -46,7 +46,7 @@ crossbeam-channel = "0.5"
 [build-dependencies]
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_Threading",
